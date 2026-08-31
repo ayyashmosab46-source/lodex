@@ -14,6 +14,7 @@ import { WhoAmIGame } from './components/minigames/WhoAmIGame';
 import { RoundResultView } from './components/RoundResultView';
 import { FinalResultsView } from './components/FinalResultsView';
 import { playClickSound, playPopSound, playCaughtAlarm } from './utils/audio';
+import { getBackendUrl } from './utils/config';
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -24,13 +25,25 @@ export default function App() {
 
   // Initialize Socket.io client
   useEffect(() => {
-    const s = io({
+    const backendUrl = getBackendUrl();
+    console.log('[LODEKS] Connecting to game backend at:', backendUrl || '(same origin)');
+
+    const s = io(backendUrl || undefined, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
+      reconnection: true,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 1000,
+      timeout: 10000,
+      withCredentials: true,
     });
 
     s.on('connect', () => {
-      console.log('Socket connected:', s.id);
+      console.log('[LODEKS] Socket connected successfully:', s.id);
+      setErrorMessage('');
+    });
+
+    s.on('connect_error', (err) => {
+      console.warn('[LODEKS] Socket connection error:', err.message);
     });
 
     s.on('room:update', (updatedRoom: RoomData) => {
@@ -79,38 +92,78 @@ export default function App() {
 
   // Handle Room Actions
   const handleCreateRoom = (nickname: string, avatar: string) => {
-    if (!socket) return;
+    if (!socket) {
+      setErrorMessage('جاري إعداد الاتصال بالخادم، يرجى المحاولة بعد لحظات...');
+      return;
+    }
+
     setIsConnecting(true);
     setErrorMessage('');
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    let resolved = false;
+    const timeoutTimer = setTimeout(() => {
+      if (!resolved) {
+        setIsConnecting(false);
+        setErrorMessage('استغرق الاتصال وقتاً طويلاً. تأكد من اتصال الإنترنت ثم أعد المحاولة.');
+      }
+    }, 8000);
 
     socket.emit(
       'room:create',
       { nickname, avatar },
       (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
+        resolved = true;
+        clearTimeout(timeoutTimer);
         setIsConnecting(false);
-        if (res.success && res.playerId) {
+        if (res && res.success && res.playerId) {
           setPlayerId(res.playerId);
-        } else if (res.error) {
+        } else if (res && res.error) {
           setErrorMessage(res.error);
+        } else {
+          setErrorMessage('تعذر إنشاء الغرفة. يرجى المحاولة مرة أخرى.');
         }
       }
     );
   };
 
   const handleJoinRoom = (roomCode: string, nickname: string, avatar: string) => {
-    if (!socket) return;
+    if (!socket) {
+      setErrorMessage('جاري إعداد الاتصال بالخادم، يرجى المحاولة بعد لحظات...');
+      return;
+    }
+
     setIsConnecting(true);
     setErrorMessage('');
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    let resolved = false;
+    const timeoutTimer = setTimeout(() => {
+      if (!resolved) {
+        setIsConnecting(false);
+        setErrorMessage('استغرق الاتصال وقتاً طويلاً. تأكد من صحة رمز الغرفة واتصالك بالإنترنت.');
+      }
+    }, 8000);
 
     socket.emit(
       'room:join',
       { roomCode, nickname, avatar, existingPlayerId: playerId || undefined },
       (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
+        resolved = true;
+        clearTimeout(timeoutTimer);
         setIsConnecting(false);
-        if (res.success && res.playerId) {
+        if (res && res.success && res.playerId) {
           setPlayerId(res.playerId);
-        } else if (res.error) {
+        } else if (res && res.error) {
           setErrorMessage(res.error);
+        } else {
+          setErrorMessage('تعذر الدخول إلى الغرفة.');
         }
       }
     );

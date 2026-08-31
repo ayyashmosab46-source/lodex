@@ -22,6 +22,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [roomCode, setRoomCode] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
 
+  // Read ?room=... or ?join=... from URL if someone shared a direct join link
+  React.useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryRoom = urlParams.get('room') || urlParams.get('join') || urlParams.get('code');
+      if (queryRoom) {
+        setRoomCode(queryRoom.toUpperCase().trim().slice(0, 4));
+        setActiveTab('join');
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     playClickSound();

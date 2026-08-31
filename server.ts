@@ -21,12 +21,28 @@ import {
 import { checkArabicMatch } from './src/utils/arabic';
 
 const app = express();
+
+// Enable CORS for all REST API endpoints and Vercel/external domains
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+app.use(express.json());
+
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],
+    credentials: true,
   },
+  transports: ['websocket', 'polling'],
   pingInterval: 10000,
   pingTimeout: 5000,
 });

@@ -26,6 +26,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const team1Players = connectedPlayers.filter((p) => (p.team || 1) === 1);
   const team2Players = connectedPlayers.filter((p) => p.team === 2);
 
+  const getShareUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', room.code);
+      return url.toString();
+    } catch {
+      return `${window.location.origin}/?room=${room.code}`;
+    }
+  };
+
   const handleCopy = () => {
     navigator.clipboard.writeText(room.code);
     setCopied(true);
@@ -34,14 +44,18 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleShare = () => {
+    const shareUrl = getShareUrl();
     if (navigator.share) {
       navigator.share({
         title: 'العب لودكس معي!',
         text: `تعال العب معنا في لودكس! رمز الغرفة: ${room.code}`,
-        url: window.location.href,
+        url: shareUrl,
       }).catch(() => {});
     } else {
-      handleCopy();
+      navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      playClickSound();
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
