@@ -23,27 +23,41 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
+  const roomRef = useRef<RoomData | null>(null);
+  const playerIdRef = useRef<string | null>(null);
+  roomRef.current = room;
+  playerIdRef.current = playerId;
+
   // Initialize Socket.io client
   useEffect(() => {
     const backendUrl = getBackendUrl();
     console.log('[LODEKS] Connecting to game backend at:', backendUrl || '(same origin)');
 
     const s = io(backendUrl || undefined, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionAttempts: 20,
+      reconnectionAttempts: 30,
       reconnectionDelay: 1000,
-      timeout: 10000,
+      timeout: 15000,
       withCredentials: true,
     });
 
     s.on('connect', () => {
       console.log('[LODEKS] Socket connected successfully:', s.id);
       setErrorMessage('');
+      // If we have an active room and playerId, ensure socket joins the room channel
+      if (roomRef.current && playerIdRef.current) {
+        s.emit('room:join', {
+          roomCode: roomRef.current.code,
+          nickname: roomRef.current.players[playerIdRef.current]?.nickname || 'لاعب',
+          avatar: roomRef.current.players[playerIdRef.current]?.avatar,
+          existingPlayerId: playerIdRef.current,
+        });
+      }
     });
 
     s.on('connect_error', (err) => {
-      console.warn('[LODEKS] Socket connection error:', err.message);
+      console.warn('[LODEKS] Socket connection notice:', err.message);
     });
 
     s.on('room:update', (updatedRoom: RoomData) => {
@@ -90,83 +104,162 @@ export default function App() {
 
   const currentPlayer: Player | null = room && playerId ? room.players[playerId] || null : null;
 
-  // Handle Room Actions
-  const handleCreateRoom = (nickname: string, avatar: string) => {
-    if (!socket) {
-      setErrorMessage('جاري إعداد الاتصال بالخادم، يرجى المحاولة بعد لحظات...');
-      return;
-    }
-
+  // Handle Room Actions (with instant REST fallback)
+  const handleCreateRoom = async (nickname: string, avatar: string) => {
     setIsConnecting(true);
     setErrorMessage('');
 
-    if (!socket.connected) {
-      socket.connect();
+    const backendUrl = getBackendUrl();
+    let resolved = false;
+
+    // Helper to finish room creation
+    const finishCreation = (pId: string, rData?: RoomData) => {
+      if (resolved) return;
+      resolved = true;
+      setIsConnecting(false);
+      setPlayerId(pId);
+      if (rData) setRoom(rData);
+
+      if (socket) {
+        if (!socket.connected) socket.connect();
+        socket.emit('room:join', {
+          roomCode: rData ? rData.code : undefined,
+          nickname,
+          avatar,
+          existingPlayerId: pId,
+        });
+      }
+    };
+
+    // 1. Try Socket.io if connected
+    if (socket && socket.connected) {
+      socket.emit(
+        'room:create',
+        { nickname, avatar },
+        (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
+          if (res && res.success && res.playerId) {
+            finishCreation(res.playerId);
+          } else if (res && res.error) {
+            resolved = true;
+            setIsConnecting(false);
+            setErrorMessage(res.error);
+          }
+        }
+      );
     }
 
-    let resolved = false;
-    const timeoutTimer = setTimeout(() => {
-      if (!resolved) {
-        setIsConnecting(false);
-        setErrorMessage('استغرق الاتصال وقتاً طويلاً. تأكد من اتصال الإنترنت ثم أعد المحاولة.');
-      }
-    }, 8000);
-
-    socket.emit(
-      'room:create',
-      { nickname, avatar },
-      (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
-        resolved = true;
-        clearTimeout(timeoutTimer);
-        setIsConnecting(false);
-        if (res && res.success && res.playerId) {
-          setPlayerId(res.playerId);
-        } else if (res && res.error) {
-          setErrorMessage(res.error);
-        } else {
-          setErrorMessage('تعذر إنشاء الغرفة. يرجى المحاولة مرة أخرى.');
+    // 2. Immediate REST Fallback / Parallel Fast Track
+    const restTimer = setTimeout(async () => {
+      if (resolved) return;
+      try {
+        const fetchUrl = backendUrl ? `${backendUrl}/api/rooms/create` : '/api/rooms/create';
+        const res = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname, avatar }),
+        });
+        const data = await res.json();
+        if (data && data.success && data.playerId) {
+          finishCreation(data.playerId, data.room);
+        } else if (data && data.error) {
+          resolved = true;
+          setIsConnecting(false);
+          setErrorMessage(data.error);
         }
+      } catch (err) {
+        console.warn('REST create room fallback failed:', err);
       }
-    );
+    }, 1500);
+
+    // 3. Timeout safeguard
+    setTimeout(() => {
+      if (!resolved) {
+        clearTimeout(restTimer);
+        setIsConnecting(false);
+        setErrorMessage('استغرق الاتصال وقتاً أطول من المتوقع. تأكد من اتصال الإنترنت ثم أعد المحاولة.');
+      }
+    }, 10000);
   };
 
-  const handleJoinRoom = (roomCode: string, nickname: string, avatar: string) => {
-    if (!socket) {
-      setErrorMessage('جاري إعداد الاتصال بالخادم، يرجى المحاولة بعد لحظات...');
-      return;
-    }
-
+  const handleJoinRoom = async (roomCode: string, nickname: string, avatar: string) => {
     setIsConnecting(true);
     setErrorMessage('');
 
-    if (!socket.connected) {
-      socket.connect();
+    const backendUrl = getBackendUrl();
+    const cleanCode = roomCode.toUpperCase().trim();
+    let resolved = false;
+
+    const finishJoin = (pId: string, rData?: RoomData) => {
+      if (resolved) return;
+      resolved = true;
+      setIsConnecting(false);
+      setPlayerId(pId);
+      if (rData) setRoom(rData);
+
+      if (socket) {
+        if (!socket.connected) socket.connect();
+        socket.emit('room:join', {
+          roomCode: cleanCode,
+          nickname,
+          avatar,
+          existingPlayerId: pId,
+        });
+      }
+    };
+
+    // 1. Try Socket.io if connected
+    if (socket && socket.connected) {
+      socket.emit(
+        'room:join',
+        { roomCode: cleanCode, nickname, avatar, existingPlayerId: playerId || undefined },
+        (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
+          if (res && res.success && res.playerId) {
+            finishJoin(res.playerId);
+          } else if (res && res.error) {
+            resolved = true;
+            setIsConnecting(false);
+            setErrorMessage(res.error);
+          }
+        }
+      );
     }
 
-    let resolved = false;
-    const timeoutTimer = setTimeout(() => {
-      if (!resolved) {
-        setIsConnecting(false);
-        setErrorMessage('استغرق الاتصال وقتاً طويلاً. تأكد من صحة رمز الغرفة واتصالك بالإنترنت.');
-      }
-    }, 8000);
-
-    socket.emit(
-      'room:join',
-      { roomCode, nickname, avatar, existingPlayerId: playerId || undefined },
-      (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
-        resolved = true;
-        clearTimeout(timeoutTimer);
-        setIsConnecting(false);
-        if (res && res.success && res.playerId) {
-          setPlayerId(res.playerId);
-        } else if (res && res.error) {
-          setErrorMessage(res.error);
-        } else {
-          setErrorMessage('تعذر الدخول إلى الغرفة.');
+    // 2. Fast REST fallback
+    const restTimer = setTimeout(async () => {
+      if (resolved) return;
+      try {
+        const fetchUrl = backendUrl ? `${backendUrl}/api/rooms/join` : '/api/rooms/join';
+        const res = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomCode: cleanCode,
+            nickname,
+            avatar,
+            existingPlayerId: playerId || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (data && data.success && data.playerId) {
+          finishJoin(data.playerId, data.room);
+        } else if (data && data.error) {
+          resolved = true;
+          setIsConnecting(false);
+          setErrorMessage(data.error);
         }
+      } catch (err) {
+        console.warn('REST join room fallback error:', err);
       }
-    );
+    }, 1500);
+
+    // 3. Timeout safeguard
+    setTimeout(() => {
+      if (!resolved) {
+        clearTimeout(restTimer);
+        setIsConnecting(false);
+        setErrorMessage('تعذر العثور على الغرفة أو استغرق الاتصال وقتاً طويلاً. تأكد من صحة الرمز.');
+      }
+    }, 10000);
   };
 
   const handleToggleReady = () => {

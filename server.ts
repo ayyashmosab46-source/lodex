@@ -1,6 +1,7 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import {
   MiniGameType,
@@ -47,7 +48,7 @@ const io = new SocketIOServer(server, {
   pingTimeout: 5000,
 });
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 // In-memory rooms storage
 const rooms: Record<string, RoomData> = {};
@@ -1113,30 +1114,188 @@ io.on('connection', (socket: Socket) => {
 });
 
 async function startServer() {
-  // API Health
+  // API Health & Status
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', activeRooms: Object.keys(rooms).length });
+    res.json({
+      status: 'ok',
+      version: '1.0.0',
+      activeRooms: Object.keys(rooms).length,
+      serverTime: Date.now(),
+    });
+  });
+
+  // REST API: Get Room Info
+  app.get('/api/rooms/:code', (req, res) => {
+    const code = (req.params.code || '').toUpperCase().trim();
+    const room = rooms[code];
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الغرفة غير موجودة!' });
+    }
+    return res.json({
+      success: true,
+      roomCode: code,
+      playerCount: Object.keys(room.players).length,
+      state: room.state,
+      currentRound: room.currentRound,
+      totalRounds: room.totalRounds,
+    });
+  });
+
+  // REST API: Create Room Fallback
+  app.post('/api/rooms/create', (req, res) => {
+    const { nickname, avatar } = req.body || {};
+    const cleanNick = ((nickname as string) || 'لاعب').trim().slice(0, 15);
+    const roomCode = generateRoomCode();
+    const playerId = `rest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    const hostPlayer: Player = {
+      id: playerId,
+      socketId: '',
+      nickname: cleanNick,
+      avatar: (avatar as string) || getRandomAvatar(),
+      score: 0,
+      roundScore: 0,
+      isHost: true,
+      isConnected: true,
+      isReady: true,
+      team: 1,
+      correctGuessesCount: 0,
+      riddleWins: 0,
+      drawingsWon: 0,
+      penalties: 0,
+    };
+
+    const newRoom: RoomData = {
+      code: roomCode,
+      hostId: playerId,
+      players: { [playerId]: hostPlayer },
+      state: 'lobby',
+      currentRound: 0,
+      totalRounds: 10,
+      gameHistory: [],
+      currentMiniGame: null,
+      roundStartTime: 0,
+      roundEndTime: 0,
+      roundDuration: 0,
+      roundData: null,
+      drawingStrokes: [],
+      chatMessages: [],
+      lastRoundResults: null,
+    };
+
+    rooms[roomCode] = newRoom;
+    return res.json({
+      success: true,
+      roomCode,
+      playerId,
+      room: newRoom,
+    });
+  });
+
+  // REST API: Join Room Fallback
+  app.post('/api/rooms/join', (req, res) => {
+    const { roomCode, nickname, avatar, existingPlayerId } = req.body || {};
+    const code = ((roomCode as string) || '').toUpperCase().trim();
+    const room = rooms[code];
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'الغرفة غير موجودة! تأكد من الرمز.' });
+    }
+
+    const currentPlayers = Object.values(room.players);
+
+    if (existingPlayerId && room.players[existingPlayerId]) {
+      const p = room.players[existingPlayerId];
+      p.isConnected = true;
+      return res.json({ success: true, roomCode: code, playerId: existingPlayerId, room });
+    }
+
+    if (currentPlayers.length >= 8) {
+      return res.status(400).json({ success: false, error: 'الغرفة ممتلئة! الحد الأقصى 8 لاعبين.' });
+    }
+
+    if (room.state !== 'lobby') {
+      return res.status(400).json({ success: false, error: 'المباراة قد بدأت بالفعل!' });
+    }
+
+    const cleanNick = ((nickname as string) || `لاعب ${currentPlayers.length + 1}`).trim().slice(0, 15);
+    const playerId = `rest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    const team1Count = currentPlayers.filter((p) => p.team === 1).length;
+    const team2Count = currentPlayers.filter((p) => p.team === 2).length;
+    const assignedTeam: 1 | 2 = team1Count <= team2Count ? 1 : 2;
+
+    const newPlayer: Player = {
+      id: playerId,
+      socketId: '',
+      nickname: cleanNick,
+      avatar: (avatar as string) || getRandomAvatar(),
+      score: 0,
+      roundScore: 0,
+      isHost: false,
+      isConnected: true,
+      isReady: false,
+      team: assignedTeam,
+      correctGuessesCount: 0,
+      riddleWins: 0,
+      drawingsWon: 0,
+      penalties: 0,
+    };
+
+    room.players[playerId] = newPlayer;
+    broadcastRoom(code);
+
+    return res.json({
+      success: true,
+      roomCode: code,
+      playerId,
+      room,
+    });
   });
 
   // Vite middleware in dev / static serve in prod
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
+
+  if (process.env.NODE_ENV === 'production' || hasDist) {
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+  } else {
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.warn('Vite middleware load fallback:', err);
+      if (hasDist) {
+        app.use(express.static(distPath));
+        app.get('*', (req, res) => {
+          res.sendFile(path.join(distPath, 'index.html'));
+        });
+      }
+    }
   }
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`LODEKS Game Server running on port ${PORT}`);
   });
+
+  server.on('error', (err) => {
+    console.error('[LODEKS Server] Server socket error:', err);
+  });
 }
+
+process.on('uncaughtException', (err) => {
+  console.error('[LODEKS Server] Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[LODEKS Server] Unhandled rejection at:', promise, 'reason:', reason);
+});
 
 startServer();
