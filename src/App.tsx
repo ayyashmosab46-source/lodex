@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { RoomData, Player, MiniGameType, DrawingStroke, ChatMessage } from './types/game';
+import { RoomData, Player, DrawingStroke } from './types/game';
 import { Header } from './components/Header';
 import { HomeView } from './components/HomeView';
 import { LobbyView } from './components/LobbyView';
@@ -13,11 +12,10 @@ import { WhatHappenedGame } from './components/minigames/WhatHappenedGame';
 import { CombineCluesGame } from './components/minigames/CombineCluesGame';
 import { DrawAndGuessGame } from './components/minigames/DrawAndGuessGame';
 import { WhoAmIGame } from './components/minigames/WhoAmIGame';
-import { getBackendUrl } from './utils/config';
+import { realtimeClient } from './utils/realtimeClient';
 import { soundManager } from './utils/audio';
 
 export function App() {
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [room, setRoom] = useState<RoomData | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(() => {
     return localStorage.getItem('lodeks_player_id') || null;
@@ -26,9 +24,7 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
-  const roomRef = useRef<RoomData | null>(null);
   const playerIdRef = useRef<string | null>(null);
-  roomRef.current = room;
   playerIdRef.current = playerId;
 
   // Persist playerId
@@ -38,56 +34,30 @@ export function App() {
     }
   }, [playerId]);
 
-  // Initialize Socket.io client
+  // Subscribe to real-time events
   useEffect(() => {
-    const backendUrl = getBackendUrl();
-    const s = io(backendUrl || undefined, {
-      transports: ['polling', 'websocket'],
-      reconnection: true,
-      reconnectionAttempts: 30,
-      reconnectionDelay: 1000,
-      timeout: 15000,
-      withCredentials: true,
-    });
-
-    s.on('connect', () => {
-      console.log('[LODEKS] Socket connected:', s.id);
-      setErrorMessage('');
-      if (roomRef.current && playerIdRef.current) {
-        s.emit('room:join', {
-          roomCode: roomRef.current.code,
-          nickname: roomRef.current.players[playerIdRef.current]?.nickname || 'لاعب',
-          avatar: roomRef.current.players[playerIdRef.current]?.avatar,
-          existingPlayerId: playerIdRef.current,
-        });
-      }
-    });
-
-    s.on('connect_error', (err) => {
-      console.warn('[LODEKS] Socket notice:', err.message);
-    });
-
-    s.on('room:update', (updatedRoom: RoomData) => {
+    const onRoomUpdate = (updatedRoom: RoomData) => {
       setRoom(updatedRoom);
       setIsConnecting(false);
-    });
+      setErrorMessage('');
+    };
 
-    s.on('game:timer', ({ timeLeft }: { timeLeft: number }) => {
+    const onTimer = ({ timeLeft }: { timeLeft: number }) => {
       setRoundTimeLeft(timeLeft);
       if (timeLeft <= 5 && timeLeft > 0) {
         soundManager.playCountdown();
       }
-    });
+    };
 
-    s.on('game:round_started', () => {
+    const onRoundStarted = () => {
       soundManager.playBeep(520, 0.2);
-    });
+    };
 
-    s.on('game:round_ended', () => {
+    const onRoundEnded = () => {
       soundManager.playSuccess();
-    });
+    };
 
-    s.on('game:answer_result', ({ correct, playerId: responderId }: { correct: boolean; playerId: string }) => {
+    const onAnswerResult = ({ correct, playerId: responderId }: { correct: boolean; playerId: string }) => {
       if (responderId === playerIdRef.current) {
         if (correct) {
           soundManager.playSuccess();
@@ -95,12 +65,20 @@ export function App() {
           soundManager.playError();
         }
       }
-    });
+    };
 
-    setSocket(s);
+    realtimeClient.on('room:update', onRoomUpdate);
+    realtimeClient.on('game:timer', onTimer);
+    realtimeClient.on('game:round_started', onRoundStarted);
+    realtimeClient.on('game:round_ended', onRoundEnded);
+    realtimeClient.on('game:answer_result', onAnswerResult);
 
     return () => {
-      s.disconnect();
+      realtimeClient.off('room:update', onRoomUpdate);
+      realtimeClient.off('game:timer', onTimer);
+      realtimeClient.off('game:round_started', onRoundStarted);
+      realtimeClient.off('game:round_ended', onRoundEnded);
+      realtimeClient.off('game:answer_result', onAnswerResult);
     };
   }, []);
 
@@ -116,164 +94,74 @@ export function App() {
     setIsConnecting(true);
     setErrorMessage('');
 
-    const finishCreation = (pId: string, rData?: RoomData) => {
+    try {
+      const res = await realtimeClient.createRoom(nickname, avatar);
       setIsConnecting(false);
-      setPlayerId(pId);
-      if (rData) setRoom(rData);
-
-      if (socket) {
-        if (!socket.connected) socket.connect();
-        socket.emit('room:join', {
-          roomCode: rData ? rData.code : undefined,
-          nickname,
-          avatar,
-          existingPlayerId: pId,
-        });
+      if (res.success && res.playerId && res.room) {
+        setPlayerId(res.playerId);
+        setRoom(res.room);
+      } else {
+        setErrorMessage(res.error || 'تعذر إنشاء الغرفة. يرجى المحاولة مرة أخرى.');
       }
-    };
-
-    if (socket && socket.connected) {
-      socket.emit(
-        'room:create',
-        { nickname, avatar },
-        (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
-          if (res && res.success && res.playerId) {
-            finishCreation(res.playerId);
-          } else if (res && res.error) {
-            setIsConnecting(false);
-            setErrorMessage(res.error);
-          }
-        }
-      );
+    } catch (err: any) {
+      setIsConnecting(false);
+      setErrorMessage(err?.message || 'حدث خطأ أثناء إنشاء الغرفة.');
     }
-
-    // Fast REST fallback
-    setTimeout(async () => {
-      if (roomRef.current) return;
-      try {
-        const fetchUrl = '/api/rooms/create';
-        const res = await fetch(fetchUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nickname, avatar }),
-        });
-        const data = await res.json();
-        if (data && data.success && data.playerId) {
-          finishCreation(data.playerId, data.room);
-        } else if (data && data.error) {
-          setIsConnecting(false);
-          setErrorMessage(data.error);
-        }
-      } catch (e) {
-        console.warn('REST fallback notice:', e);
-      }
-    }, 1200);
   };
 
   const handleJoinRoom = async (roomCode: string, nickname: string, avatar: string) => {
     setIsConnecting(true);
     setErrorMessage('');
 
-    const cleanCode = roomCode.toUpperCase().trim();
-
-    const finishJoin = (pId: string, rData?: RoomData) => {
+    try {
+      const res = await realtimeClient.joinRoom(roomCode, nickname, avatar, playerId || undefined);
       setIsConnecting(false);
-      setPlayerId(pId);
-      if (rData) setRoom(rData);
-
-      if (socket) {
-        if (!socket.connected) socket.connect();
-        socket.emit('room:join', {
-          roomCode: cleanCode,
-          nickname,
-          avatar,
-          existingPlayerId: pId,
-        });
+      if (res.success && res.playerId && res.room) {
+        setPlayerId(res.playerId);
+        setRoom(res.room);
+      } else {
+        setErrorMessage(res.error || 'تعذر الانضمام للغرفة. تأكد من رمز الغرفة.');
       }
-    };
-
-    if (socket && socket.connected) {
-      socket.emit(
-        'room:join',
-        { roomCode: cleanCode, nickname, avatar, existingPlayerId: playerId || undefined },
-        (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
-          if (res && res.success && res.playerId) {
-            finishJoin(res.playerId);
-          } else if (res && res.error) {
-            setIsConnecting(false);
-            setErrorMessage(res.error);
-          }
-        }
-      );
+    } catch (err: any) {
+      setIsConnecting(false);
+      setErrorMessage(err?.message || 'حدث خطأ أثناء الانضمام للغرفة.');
     }
-
-    // Fast REST fallback
-    setTimeout(async () => {
-      if (roomRef.current) return;
-      try {
-        const fetchUrl = '/api/rooms/join';
-        const res = await fetch(fetchUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomCode: cleanCode, nickname, avatar, existingPlayerId: playerId || undefined }),
-        });
-        const data = await res.json();
-        if (data && data.success && data.playerId) {
-          finishJoin(data.playerId, data.room);
-        } else if (data && data.error) {
-          setIsConnecting(false);
-          setErrorMessage(data.error);
-        }
-      } catch (e) {
-        console.warn('REST fallback notice:', e);
-      }
-    }, 1200);
   };
 
   const handleToggleReady = () => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('player:ready');
+    realtimeClient.toggleReady();
   };
 
   const handleChangeTeam = (team: 1 | 2) => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('player:team', { team });
+    realtimeClient.changeTeam(team);
   };
 
   const handleStartGame = () => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('game:start');
+    realtimeClient.startGame();
   };
 
   const handleNextRound = () => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('game:next_round');
+    realtimeClient.nextRound();
   };
 
   const handlePlayAgain = () => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('game:play_again');
+    realtimeClient.playAgain();
   };
 
   const handleSendAnswer = (answer: string) => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('game:answer', { answer });
+    realtimeClient.sendAnswer(answer);
   };
 
   const handleDrawStroke = (stroke: DrawingStroke) => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('draw:stroke', { stroke });
+    realtimeClient.sendStroke(stroke);
   };
 
   const handleClearCanvas = () => {
-    if (!socket || !room || !playerId) return;
-    socket.emit('draw:clear');
+    realtimeClient.clearCanvas();
   };
 
   const handleLeaveRoom = () => {
-    if (socket && room && playerId) {
-      socket.emit('room:leave');
-    }
+    realtimeClient.leaveRoom();
     setRoom(null);
   };
 
