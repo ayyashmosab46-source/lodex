@@ -18,12 +18,16 @@ import {
   DRAW_WORDS,
   WHO_AM_I_DATA,
   WHAT_HAPPENED_DATA,
+  FALCON_EYE_DATA,
+  MEMORY_DATA,
   RiddleItem,
   SoundItem,
   ClueItem,
   DrawWordItem,
   WhoAmIItem,
   WhatHappenedItem,
+  FalconEyeItem,
+  MemoryGameItem,
 } from './src/data/content';
 import { isArabicMatch } from './src/utils/arabic';
 
@@ -65,6 +69,8 @@ const MINI_GAMES: MiniGameType[] = [
   'combine_clues',
   'draw_guess',
   'who_am_i',
+  'falcon_eye',
+  'memory_game',
 ];
 
 function generateRoomCode(): string {
@@ -132,41 +138,69 @@ function startRound(roomCode: string) {
   prepareRoundData(room, nextGame);
   broadcastRoom(roomCode);
 
-  // Transition from Intro to Playing after 3 seconds
+  // Transition from Intro to Playing after 3.5 seconds
   setTimeout(() => {
     const currentRoom = rooms[roomCode];
     if (!currentRoom || currentRoom.state !== 'round_intro') return;
 
+    const startingTeam: 1 | 2 = currentRoom.currentRound % 2 === 1 ? 1 : 2;
     currentRoom.state = 'playing';
+    currentRoom.activeTeam = startingTeam;
+    currentRoom.teamTurnPhase = 1;
+    currentRoom.teamTimeLeft = 30;
+    currentRoom.roundDuration = 60;
     currentRoom.roundStartTime = Date.now();
-    currentRoom.roundDuration = getRoundDuration(nextGame);
-    currentRoom.roundEndTime = currentRoom.roundStartTime + currentRoom.roundDuration * 1000;
+    currentRoom.roundEndTime = currentRoom.roundStartTime + 60 * 1000;
 
     broadcastRoom(roomCode);
     io.to(roomCode).emit('game:round_started');
 
     // Run Round Timer
-    let timeLeft = currentRoom.roundDuration;
+    let teamTime = 30;
+    let phase: 1 | 2 = 1;
+
+    io.to(roomCode).emit('game:timer', {
+      timeLeft: teamTime,
+      activeTeam: currentRoom.activeTeam,
+      phase,
+    });
+
     roomTimers[roomCode] = setInterval(() => {
-      timeLeft -= 1;
-      io.to(roomCode).emit('game:timer', { timeLeft: Math.max(0, timeLeft) });
+      teamTime -= 1;
+      currentRoom.teamTimeLeft = Math.max(0, teamTime);
 
       // Special handler for WhoAmI clues progressive reveal
       if (nextGame === 'who_am_i' && currentRoom.roundData) {
-        if (timeLeft === 20 && currentRoom.roundData.unlockedCluesCount < 2) {
+        if (teamTime === 20 && currentRoom.roundData.unlockedCluesCount < 2) {
           currentRoom.roundData.unlockedCluesCount = 2;
           currentRoom.roundData.currentPoints = 75;
           broadcastRoom(roomCode);
-        } else if (timeLeft === 10 && currentRoom.roundData.unlockedCluesCount < 3) {
+        } else if (teamTime === 10 && currentRoom.roundData.unlockedCluesCount < 3) {
           currentRoom.roundData.unlockedCluesCount = 3;
           currentRoom.roundData.currentPoints = 50;
           broadcastRoom(roomCode);
         }
       }
 
-      if (timeLeft <= 0) {
-        clearRoomTimer(roomCode);
-        endRound(roomCode, null); // Time out with no winner
+      io.to(roomCode).emit('game:timer', {
+        timeLeft: Math.max(0, teamTime),
+        activeTeam: currentRoom.activeTeam,
+        phase,
+      });
+
+      if (teamTime <= 0) {
+        if (phase === 1) {
+          phase = 2;
+          teamTime = 30;
+          const secondTeam: 1 | 2 = startingTeam === 1 ? 2 : 1;
+          currentRoom.activeTeam = secondTeam;
+          currentRoom.teamTurnPhase = 2;
+          currentRoom.teamTimeLeft = 30;
+          broadcastRoom(roomCode);
+        } else {
+          clearRoomTimer(roomCode);
+          endRound(roomCode, null); // Time out with no winner
+        }
       }
     }, 1000);
   }, 3500);
@@ -186,6 +220,10 @@ function getRoundDuration(gameType: MiniGameType): number {
       return 45;
     case 'who_am_i':
       return 30;
+    case 'falcon_eye':
+      return 30;
+    case 'memory_game':
+      return 30;
     default:
       return 30;
   }
@@ -197,10 +235,11 @@ function prepareRoundData(room: RoomData, gameType: MiniGameType) {
   switch (gameType) {
     case 'riddles': {
       const item = RIDDLES_DATA[Math.floor(Math.random() * RIDDLES_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         question: item.question,
-        hint: item.hint,
+        options: shuffledOptions,
         _answer: item.answer,
         _aliases: item.aliases,
       };
@@ -208,11 +247,13 @@ function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'sound_guess': {
       const item = SOUNDS_DATA[Math.floor(Math.random() * SOUNDS_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         title: item.title,
         soundKey: item.soundKey,
         category: item.category,
+        options: shuffledOptions,
         _answer: item.answer,
         _aliases: item.aliases,
       };
@@ -220,25 +261,32 @@ function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'what_happened': {
       const item = WHAT_HAPPENED_DATA[Math.floor(Math.random() * WHAT_HAPPENED_DATA.length)];
+      const correctAns = item.options[item.correctOptionIndex];
+      const shuffledOptions = [...item.options].sort(() => Math.random() - 0.5);
+      const newCorrectIndex = shuffledOptions.indexOf(correctAns);
       room.roundData = {
         id: item.id,
         showTitle: item.showTitle,
         showPoster: item.showPoster,
         sceneDescription: item.sceneDescription,
         question: item.question,
-        options: item.options,
-        _correctOptionIndex: item.correctOptionIndex,
-        _correctAnswer: item.options[item.correctOptionIndex],
+        options: shuffledOptions,
+        _correctOptionIndex: newCorrectIndex,
+        _correctAnswer: correctAns,
         _explanation: item.explanation,
+        _answer: correctAns,
+        _aliases: [],
       };
       break;
     }
     case 'combine_clues': {
       const item = CLUES_DATA[Math.floor(Math.random() * CLUES_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         theme: item.theme,
         clues: item.clues,
+        options: shuffledOptions,
         _answer: item.answer,
         _aliases: item.aliases,
       };
@@ -246,8 +294,14 @@ function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'draw_guess': {
       const item = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)];
-      // Pick a random drawer
-      const drawer = playersList[Math.floor(Math.random() * playersList.length)];
+      const activePlayers = playersList.filter((p) => p.team === room.activeTeam);
+      const drawer =
+        (activePlayers.length > 0
+          ? activePlayers[Math.floor(Math.random() * activePlayers.length)]
+          : playersList[Math.floor(Math.random() * playersList.length)]) || {
+          id: room.hostId,
+          nickname: 'الرسام',
+        };
       room.roundData = {
         drawerId: drawer.id,
         drawerNickname: drawer.nickname,
@@ -260,15 +314,59 @@ function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'who_am_i': {
       const item = WHO_AM_I_DATA[Math.floor(Math.random() * WHO_AM_I_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         category: item.category,
         clues: item.clues,
+        options: shuffledOptions,
         unlockedCluesCount: 1,
         currentPoints: 100,
         _answer: item.characterName,
         _aliases: item.aliases,
         _description: item.description,
+      };
+      break;
+    }
+    case 'falcon_eye': {
+      const item = FALCON_EYE_DATA[Math.floor(Math.random() * FALCON_EYE_DATA.length)];
+      const correctAns = item.options[item.correctOptionIndex];
+      const shuffledOptions = [...item.options].sort(() => Math.random() - 0.5);
+      const newCorrectIndex = shuffledOptions.indexOf(correctAns);
+      room.roundData = {
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        sceneIcon: item.sceneIcon,
+        sceneDescription: item.sceneDescription,
+        visualGrid: item.visualGrid,
+        question: item.question,
+        options: shuffledOptions,
+        _correctOptionIndex: newCorrectIndex,
+        _correctAnswer: correctAns,
+        _explanation: item.explanation,
+        _answer: item.answer,
+        _aliases: item.aliases,
+      };
+      break;
+    }
+    case 'memory_game': {
+      const item = MEMORY_DATA[Math.floor(Math.random() * MEMORY_DATA.length)];
+      const correctAns = item.options[item.correctOptionIndex];
+      const shuffledOptions = [...item.options].sort(() => Math.random() - 0.5);
+      const newCorrectIndex = shuffledOptions.indexOf(correctAns);
+      room.roundData = {
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        itemsToMemorize: item.itemsToMemorize,
+        question: item.question,
+        options: shuffledOptions,
+        _correctOptionIndex: newCorrectIndex,
+        _correctAnswer: correctAns,
+        _explanation: item.explanation,
+        _answer: item.answer,
+        _aliases: item.aliases,
       };
       break;
     }
@@ -375,7 +473,7 @@ io.on('connection', (socket: Socket) => {
       players: { [playerId]: hostPlayer },
       state: 'lobby',
       currentRound: 0,
-      totalRounds: 10,
+      totalRounds: 12,
       gameHistory: [],
       currentMiniGame: null,
       roundStartTime: 0,
@@ -548,6 +646,13 @@ io.on('connection', (socket: Socket) => {
     const player = room.players[currentPlayerId];
     if (!player) return;
 
+    // Only active team can answer (except drawer in draw_guess)
+    if (room.currentMiniGame !== 'draw_guess') {
+      if (room.activeTeam && player.team !== room.activeTeam) {
+        return;
+      }
+    }
+
     // In draw_guess, drawer cannot answer
     if (room.currentMiniGame === 'draw_guess' && room.roundData.drawerId === player.id) {
       return;
@@ -555,10 +660,23 @@ io.on('connection', (socket: Socket) => {
 
     let isCorrect = false;
 
-    if (room.currentMiniGame === 'what_happened') {
+    if (
+      room.currentMiniGame === 'what_happened' ||
+      room.currentMiniGame === 'falcon_eye' ||
+      room.currentMiniGame === 'memory_game'
+    ) {
       const chosenIdx = parseInt(answer, 10);
-      if (chosenIdx === room.roundData._correctOptionIndex) {
+      if (!isNaN(chosenIdx) && chosenIdx === room.roundData._correctOptionIndex) {
         isCorrect = true;
+      } else if (
+        room.roundData._correctAnswer &&
+        isArabicMatch(answer, room.roundData._correctAnswer, room.roundData._aliases || [])
+      ) {
+        isCorrect = true;
+      } else {
+        const target = room.roundData._answer || '';
+        const aliases = room.roundData._aliases || [];
+        isCorrect = isArabicMatch(answer, target, aliases);
       }
     } else {
       const target = room.roundData._answer || room.roundData.wordToDraw || '';
@@ -765,36 +883,39 @@ async function startServer() {
   });
 
   // Serve static assets in prod / Vite in dev
-  let distPath = path.join(process.cwd(), 'dist');
-  if (!fs.existsSync(path.join(distPath, 'index.html')) && typeof __dirname !== 'undefined') {
-    if (fs.existsSync(path.join(__dirname, 'index.html'))) {
-      distPath = __dirname;
-    } else if (fs.existsSync(path.join(__dirname, '..', 'dist', 'index.html'))) {
-      distPath = path.join(__dirname, '..', 'dist');
-    }
-  }
-  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
-
-  if (process.env.NODE_ENV === 'production' || hasDist) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+  if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
     });
+    app.use(vite.middlewares);
   } else {
-    try {
-      const { createServer: createViteServer } = await import('vite');
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
+    let distPath = path.join(process.cwd(), 'dist');
+    if (!fs.existsSync(path.join(distPath, 'index.html')) && typeof __dirname !== 'undefined') {
+      if (fs.existsSync(path.join(__dirname, 'index.html'))) {
+        distPath = __dirname;
+      } else if (fs.existsSync(path.join(__dirname, '..', 'dist', 'index.html'))) {
+        distPath = path.join(__dirname, '..', 'dist');
+      }
+    }
+
+    if (fs.existsSync(path.join(distPath, 'index.html'))) {
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
       });
-      app.use(vite.middlewares);
-    } catch (err) {
-      console.warn('Vite middleware load notice:', err);
-      if (hasDist) {
-        app.use(express.static(distPath));
-        app.get('*', (req, res) => {
-          res.sendFile(path.join(distPath, 'index.html'));
+    } else {
+      // Fallback to Vite dev server if dist build is missing even in production
+      try {
+        const { createServer: createViteServer } = await import('vite');
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
         });
+        app.use(vite.middlewares);
+      } catch (err) {
+        console.warn('Vite fallback load notice:', err);
       }
     }
   }

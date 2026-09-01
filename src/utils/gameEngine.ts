@@ -11,6 +11,8 @@ import {
   DRAW_WORDS,
   WHO_AM_I_DATA,
   WHAT_HAPPENED_DATA,
+  FALCON_EYE_DATA,
+  MEMORY_DATA,
 } from '../data/content';
 import { isArabicMatch } from './arabic';
 
@@ -21,6 +23,8 @@ export const MINI_GAMES: MiniGameType[] = [
   'combine_clues',
   'draw_guess',
   'who_am_i',
+  'falcon_eye',
+  'memory_game',
 ];
 
 export function generateRoomCode(): string {
@@ -51,6 +55,10 @@ export function getRoundDuration(gameType: MiniGameType): number {
       return 45;
     case 'who_am_i':
       return 30;
+    case 'falcon_eye':
+      return 30;
+    case 'memory_game':
+      return 30;
     default:
       return 30;
   }
@@ -62,10 +70,11 @@ export function prepareRoundData(room: RoomData, gameType: MiniGameType) {
   switch (gameType) {
     case 'riddles': {
       const item = RIDDLES_DATA[Math.floor(Math.random() * RIDDLES_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         question: item.question,
-        hint: item.hint,
+        options: shuffledOptions,
         _answer: item.answer,
         _aliases: item.aliases,
       };
@@ -73,11 +82,13 @@ export function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'sound_guess': {
       const item = SOUNDS_DATA[Math.floor(Math.random() * SOUNDS_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         title: item.title,
         soundKey: item.soundKey,
         category: item.category,
+        options: shuffledOptions,
         _answer: item.answer,
         _aliases: item.aliases,
       };
@@ -85,25 +96,32 @@ export function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'what_happened': {
       const item = WHAT_HAPPENED_DATA[Math.floor(Math.random() * WHAT_HAPPENED_DATA.length)];
+      const correctAns = item.options[item.correctOptionIndex];
+      const shuffledOptions = [...item.options].sort(() => Math.random() - 0.5);
+      const newCorrectIndex = shuffledOptions.indexOf(correctAns);
       room.roundData = {
         id: item.id,
         showTitle: item.showTitle,
         showPoster: item.showPoster,
         sceneDescription: item.sceneDescription,
         question: item.question,
-        options: item.options,
-        _correctOptionIndex: item.correctOptionIndex,
-        _correctAnswer: item.options[item.correctOptionIndex],
+        options: shuffledOptions,
+        _correctOptionIndex: newCorrectIndex,
+        _correctAnswer: correctAns,
         _explanation: item.explanation,
+        _answer: correctAns,
+        _aliases: [],
       };
       break;
     }
     case 'combine_clues': {
       const item = CLUES_DATA[Math.floor(Math.random() * CLUES_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         theme: item.theme,
         clues: item.clues,
+        options: shuffledOptions,
         _answer: item.answer,
         _aliases: item.aliases,
       };
@@ -111,7 +129,14 @@ export function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'draw_guess': {
       const item = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)];
-      const drawer = playersList[Math.floor(Math.random() * playersList.length)] || { id: room.hostId, nickname: 'الرسام' };
+      const activePlayers = playersList.filter((p) => p.team === room.activeTeam);
+      const drawer =
+        (activePlayers.length > 0
+          ? activePlayers[Math.floor(Math.random() * activePlayers.length)]
+          : playersList[Math.floor(Math.random() * playersList.length)]) || {
+          id: room.hostId,
+          nickname: 'الرسام',
+        };
       room.roundData = {
         drawerId: drawer.id,
         drawerNickname: drawer.nickname,
@@ -124,15 +149,59 @@ export function prepareRoundData(room: RoomData, gameType: MiniGameType) {
     }
     case 'who_am_i': {
       const item = WHO_AM_I_DATA[Math.floor(Math.random() * WHO_AM_I_DATA.length)];
+      const shuffledOptions = item.options ? [...item.options].sort(() => Math.random() - 0.5) : undefined;
       room.roundData = {
         id: item.id,
         category: item.category,
         clues: item.clues,
+        options: shuffledOptions,
         unlockedCluesCount: 1,
         currentPoints: 100,
         _answer: item.characterName,
         _aliases: item.aliases,
         _description: item.description,
+      };
+      break;
+    }
+    case 'falcon_eye': {
+      const item = FALCON_EYE_DATA[Math.floor(Math.random() * FALCON_EYE_DATA.length)];
+      const correctAns = item.options[item.correctOptionIndex];
+      const shuffledOptions = [...item.options].sort(() => Math.random() - 0.5);
+      const newCorrectIndex = shuffledOptions.indexOf(correctAns);
+      room.roundData = {
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        sceneIcon: item.sceneIcon,
+        sceneDescription: item.sceneDescription,
+        visualGrid: item.visualGrid,
+        question: item.question,
+        options: shuffledOptions,
+        _correctOptionIndex: newCorrectIndex,
+        _correctAnswer: correctAns,
+        _explanation: item.explanation,
+        _answer: item.answer,
+        _aliases: item.aliases,
+      };
+      break;
+    }
+    case 'memory_game': {
+      const item = MEMORY_DATA[Math.floor(Math.random() * MEMORY_DATA.length)];
+      const correctAns = item.options[item.correctOptionIndex];
+      const shuffledOptions = [...item.options].sort(() => Math.random() - 0.5);
+      const newCorrectIndex = shuffledOptions.indexOf(correctAns);
+      room.roundData = {
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        itemsToMemorize: item.itemsToMemorize,
+        question: item.question,
+        options: shuffledOptions,
+        _correctOptionIndex: newCorrectIndex,
+        _correctAnswer: correctAns,
+        _explanation: item.explanation,
+        _answer: item.answer,
+        _aliases: item.aliases,
       };
       break;
     }
@@ -164,6 +233,12 @@ export function startRoundLogic(room: RoomData): MiniGameType | null {
   room.drawingStrokes = [];
   room.chatMessages = [];
   room.lastRoundResults = null;
+
+  // Alternate starting team between rounds
+  const startingTeam: 1 | 2 = room.currentRound % 2 === 1 ? 1 : 2;
+  room.activeTeam = startingTeam;
+  room.teamTurnPhase = 1;
+  room.teamTimeLeft = 30;
 
   prepareRoundData(room, nextGame);
   return nextGame;
@@ -245,6 +320,13 @@ export function handleAnswerLogic(
   const player = room.players[playerId];
   if (!player) return { isCorrect: false, roundEnded: false };
 
+  // Only the active team can answer (in draw_guess, guessers of active team or drawer logic)
+  if (room.currentMiniGame !== 'draw_guess') {
+    if (room.activeTeam && player.team !== room.activeTeam) {
+      return { isCorrect: false, roundEnded: false };
+    }
+  }
+
   // Drawer cannot answer in draw_guess
   if (room.currentMiniGame === 'draw_guess' && room.roundData.drawerId === player.id) {
     return { isCorrect: false, roundEnded: false };
@@ -252,10 +334,23 @@ export function handleAnswerLogic(
 
   let isCorrect = false;
 
-  if (room.currentMiniGame === 'what_happened') {
+  if (
+    room.currentMiniGame === 'what_happened' ||
+    room.currentMiniGame === 'falcon_eye' ||
+    room.currentMiniGame === 'memory_game'
+  ) {
     const chosenIdx = parseInt(answer, 10);
-    if (chosenIdx === room.roundData._correctOptionIndex) {
+    if (!isNaN(chosenIdx) && chosenIdx === room.roundData._correctOptionIndex) {
       isCorrect = true;
+    } else if (
+      room.roundData._correctAnswer &&
+      isArabicMatch(answer, room.roundData._correctAnswer, room.roundData._aliases || [])
+    ) {
+      isCorrect = true;
+    } else {
+      const target = room.roundData._answer || '';
+      const aliases = room.roundData._aliases || [];
+      isCorrect = isArabicMatch(answer, target, aliases);
     }
   } else {
     const target = room.roundData._answer || room.roundData.wordToDraw || '';

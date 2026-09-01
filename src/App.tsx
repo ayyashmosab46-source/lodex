@@ -12,6 +12,8 @@ import { WhatHappenedGame } from './components/minigames/WhatHappenedGame';
 import { CombineCluesGame } from './components/minigames/CombineCluesGame';
 import { DrawAndGuessGame } from './components/minigames/DrawAndGuessGame';
 import { WhoAmIGame } from './components/minigames/WhoAmIGame';
+import { FalconEyeGame } from './components/minigames/FalconEyeGame';
+import { MemoryGame } from './components/minigames/MemoryGame';
 import { realtimeClient } from './utils/realtimeClient';
 import { soundManager } from './utils/audio';
 
@@ -169,12 +171,17 @@ export function App() {
   const renderActiveMiniGame = () => {
     if (!room || !currentPlayer || !room.roundData) return null;
 
+    const activeTeam = room.activeTeam || 1;
+    const teamTurnPhase = room.teamTurnPhase || 1;
+
     switch (room.currentMiniGame) {
       case 'riddles':
         return (
           <RiddlesGame
             roundData={room.roundData}
             currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
             roundTimeLeft={roundTimeLeft}
             onSendAnswer={handleSendAnswer}
           />
@@ -184,6 +191,8 @@ export function App() {
           <SoundGuessGame
             roundData={room.roundData}
             currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
             roundTimeLeft={roundTimeLeft}
             onSendAnswer={handleSendAnswer}
           />
@@ -193,6 +202,8 @@ export function App() {
           <WhatHappenedGame
             roundData={room.roundData}
             currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
             roundTimeLeft={roundTimeLeft}
             onSendAnswer={handleSendAnswer}
           />
@@ -202,6 +213,8 @@ export function App() {
           <CombineCluesGame
             roundData={room.roundData}
             currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
             roundTimeLeft={roundTimeLeft}
             onSendAnswer={handleSendAnswer}
           />
@@ -211,6 +224,8 @@ export function App() {
           <DrawAndGuessGame
             roundData={room.roundData}
             currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
             roundTimeLeft={roundTimeLeft}
             drawingStrokes={room.drawingStrokes || []}
             chatMessages={room.chatMessages || []}
@@ -224,6 +239,30 @@ export function App() {
           <WhoAmIGame
             roundData={room.roundData}
             currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
+            roundTimeLeft={roundTimeLeft}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      case 'falcon_eye':
+        return (
+          <FalconEyeGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
+            roundTimeLeft={roundTimeLeft}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      case 'memory_game':
+        return (
+          <MemoryGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            activeTeam={activeTeam}
+            teamTurnPhase={teamTurnPhase}
             roundTimeLeft={roundTimeLeft}
             onSendAnswer={handleSendAnswer}
           />

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { MiniGameType } from '../types/game';
-import { HelpCircle, Volume2, Film, Puzzle, Palette, UserCheck, Timer } from 'lucide-react';
+import { HelpCircle, Volume2, Film, Puzzle, Palette, UserCheck, Eye, Brain } from 'lucide-react';
 import { soundManager } from '../utils/audio';
 
 interface RoundIntroViewProps {
@@ -18,7 +18,7 @@ const GAME_META: Record<MiniGameType, { title: string; subtitle: string; icon: R
     color: 'from-emerald-500/20 to-emerald-950/40 border-emerald-500/40',
     rules: [
       'اقرأ اللغز بعناية مع فريقك',
-      'لديك 30 ثانية للإجابة الصحيحة',
+      'اختر الإجابة الصحيحة من الخيارات أو اكتبها',
       'الفريق الأسرع في الإجابة يكسب 100 نقطة',
     ],
   },
@@ -29,7 +29,7 @@ const GAME_META: Record<MiniGameType, { title: string; subtitle: string; icon: R
     color: 'from-amber-500/20 to-amber-950/40 border-amber-500/40',
     rules: [
       'اضغط زر الاستماع لسماع المؤثر الصوتي',
-      'خمّن ما هو الشيء أو الحيوان أو الوسيلة',
+      'اختر الإجابة الصحيحة من الخيارات المعروضة',
       'كل ثانية توفرها تزيد من نقاطك المكتسبة',
     ],
   },
@@ -51,8 +51,8 @@ const GAME_META: Record<MiniGameType, { title: string; subtitle: string; icon: R
     color: 'from-blue-500/20 to-blue-950/40 border-blue-500/40',
     rules: [
       'ستظهر 4 بطاقات دلائل تقود لكلمة واحدة',
-      'اكتب الإجابة باللغة العربية بدقة',
-      'الأسرع في الاستنتاج يحصل على الجائزة الكبرى',
+      'اختر الإجابة الصحيحة من الخيارات المتاحة',
+      'الأسرع في الاستنتاج يحصل على 100 نقطة',
     ],
   },
   draw_guess: {
@@ -75,6 +75,28 @@ const GAME_META: Record<MiniGameType, { title: string; subtitle: string; icon: R
       'التلميح 1 مفتوح (100 نقطة)',
       'التلميح 2 يفتح بعد 10 ثوانٍ (75 نقطة)',
       'التلميح 3 الأوضح بعد 20 ثانية (50 نقطة)',
+    ],
+  },
+  falcon_eye: {
+    title: 'عين الصقر (قوة الملاحظة)',
+    subtitle: 'دقق في المشهد البصري واكتشف التفاصيل الدقيقة بسرعة فائقة',
+    icon: <Eye className="w-12 h-12 text-amber-400" />,
+    color: 'from-amber-500/20 to-amber-950/40 border-amber-500/40',
+    rules: [
+      'دقق في الشبكة البصرية والمشهد',
+      'اختر الإجابة الصحيحة عن التفاصيل المطلوبة',
+      'الفريق الأسرع في الإجابة يكسب 100 نقطة',
+    ],
+  },
+  memory_game: {
+    title: 'الذاكرة (قوة الحفظ)',
+    subtitle: 'احفظ العناصر والأشكال قبل اختفائها وأجب عن السؤال الدقيق',
+    icon: <Brain className="w-12 h-12 text-teal-400" />,
+    color: 'from-teal-500/20 to-teal-950/40 border-teal-500/40',
+    rules: [
+      'احفظ العناصر المعروضة خلال ثواني الحفظ الأولى',
+      'بعد إخفاء العناصر، أجب عن السؤال باختيار الخيار الصحيح',
+      'الإجابة الصحيحة تمنح فريقك 100 نقطة',
     ],
   },
 };

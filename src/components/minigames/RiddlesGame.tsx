@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { HelpCircle, Send, Timer, Lightbulb, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { HelpCircle, Send, Lightbulb, CheckCircle2, Lock } from 'lucide-react';
 import { Player } from '../../types/game';
+import { TeamTurnBadge } from './TeamTurnBadge';
 
 interface RiddlesGameProps {
   roundData: {
     question: string;
     hint: string;
+    options?: string[];
   };
   currentPlayer: Player;
+  activeTeam?: 1 | 2;
+  teamTurnPhase?: 1 | 2;
   roundTimeLeft: number;
   onSendAnswer: (answer: string) => void;
 }
@@ -15,39 +19,46 @@ interface RiddlesGameProps {
 export const RiddlesGame: React.FC<RiddlesGameProps> = ({
   roundData,
   currentPlayer,
+  activeTeam = 1,
+  teamTurnPhase = 1,
   roundTimeLeft,
   onSendAnswer,
 }) => {
   const [inputAnswer, setInputAnswer] = useState('');
   const [showHint, setShowHint] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+
+  const isMyTurn = currentPlayer.team === activeTeam;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputAnswer.trim()) return;
+    if (!isMyTurn || !inputAnswer.trim()) return;
     onSendAnswer(inputAnswer.trim());
     setInputAnswer('');
   };
 
+  const handleSelectOption = (option: string) => {
+    if (!isMyTurn || selectedOption !== null) return;
+    setSelectedOption(option);
+    onSendAnswer(option);
+  };
+
   return (
-    <div className="max-w-xl mx-auto px-4 py-4 flex flex-col items-center">
-      {/* Header Info */}
-      <div className="w-full flex items-center justify-between mb-4 bg-slate-900/80 px-4 py-2.5 rounded-2xl border border-slate-800">
-        <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
-          <HelpCircle className="w-4 h-4" />
-          <span>تحدي الألغاز والذكاء</span>
-        </div>
-        <div className="flex items-center gap-1.5 font-mono font-bold text-amber-400 text-sm">
-          <Timer className="w-4 h-4" />
-          <span>{roundTimeLeft} ثانية</span>
-        </div>
-      </div>
+    <div className="max-w-xl mx-auto px-4 py-3 flex flex-col items-center">
+      {/* Team Turn & Countdown Bar */}
+      <TeamTurnBadge
+        activeTeam={activeTeam}
+        teamTurnPhase={teamTurnPhase}
+        roundTimeLeft={roundTimeLeft}
+        currentPlayer={currentPlayer}
+      />
 
       {/* Riddle Box */}
-      <div className="w-full bg-gradient-to-b from-emerald-950/40 via-slate-900/90 to-slate-900/90 border border-emerald-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl text-center mb-5">
-        <span className="inline-block p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-4">
-          <HelpCircle className="w-8 h-8" />
+      <div className="w-full bg-gradient-to-b from-emerald-950/40 via-slate-900/90 to-slate-900/90 border border-emerald-500/30 rounded-3xl p-6 shadow-2xl text-center mb-4">
+        <span className="inline-block p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-3">
+          <HelpCircle className="w-7 h-7" />
         </span>
-        <h2 className="text-xl sm:text-2xl font-black text-white leading-relaxed mb-4">
+        <h2 className="text-lg sm:text-xl font-black text-white leading-relaxed mb-3">
           "{roundData.question}"
         </h2>
 
@@ -61,13 +72,50 @@ export const RiddlesGame: React.FC<RiddlesGameProps> = ({
           <button
             type="button"
             onClick={() => setShowHint(true)}
-            className="text-xs text-slate-400 hover:text-amber-400 flex items-center gap-1 mx-auto transition cursor-pointer"
+            className="text-xs text-slate-400 hover:text-amber-400 flex items-center gap-1.5 mx-auto transition cursor-pointer bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800"
           >
-            <Lightbulb className="w-3.5 h-3.5" />
+            <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
             <span>إظهار تلميح اللغز</span>
           </button>
         )}
       </div>
+
+      {/* Answer Choices (Multiple Choice Buttons) */}
+      {roundData.options && roundData.options.length > 0 && (
+        <div className="w-full mb-4">
+          <p className="text-xs font-bold text-slate-400 mb-2 text-right">
+            اختر الإجابة الصحيحة أو اكتبها بالأسفل:
+          </p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {roundData.options.map((opt, idx) => {
+              const isSelected = selectedOption === opt;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectOption(opt)}
+                  disabled={!isMyTurn || selectedOption !== null}
+                  className={`p-3.5 rounded-2xl border text-right transition-all flex items-center justify-between gap-2 text-xs sm:text-sm font-bold ${
+                    isSelected
+                      ? 'bg-emerald-600 text-white border-emerald-400 shadow-lg shadow-emerald-600/30'
+                      : isMyTurn
+                      ? 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-slate-100 hover:border-emerald-500/50 cursor-pointer'
+                      : 'bg-slate-950/60 border-slate-800/80 text-slate-500 cursor-not-allowed opacity-60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="w-5 h-5 rounded-lg bg-slate-950/60 border border-slate-700/60 flex items-center justify-center font-mono text-[11px] shrink-0">
+                      {idx + 1}
+                    </span>
+                    <span className="truncate">{opt}</span>
+                  </div>
+                  {isSelected && <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Answer Form */}
       <form onSubmit={handleSubmit} className="w-full flex gap-2">
@@ -75,16 +123,21 @@ export const RiddlesGame: React.FC<RiddlesGameProps> = ({
           type="text"
           value={inputAnswer}
           onChange={(e) => setInputAnswer(e.target.value)}
-          placeholder="اكتب إجابتك هنا واضغط إرسال..."
-          className="flex-1 bg-slate-900 border border-slate-700 focus:border-emerald-400 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 text-sm outline-none font-bold transition"
-          autoFocus
+          disabled={!isMyTurn}
+          placeholder={
+            isMyTurn
+              ? 'اكتب إجابتك هنا واضغط إرسال...'
+              : 'انتظر دور فريقك لكتابة الإجابة...'
+          }
+          className="flex-1 bg-slate-900 border border-slate-700 focus:border-emerald-400 rounded-2xl px-4 py-3 text-white placeholder-slate-500 text-sm outline-none font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
+          autoFocus={isMyTurn}
         />
         <button
           type="submit"
-          disabled={!inputAnswer.trim()}
+          disabled={!isMyTurn || !inputAnswer.trim()}
           className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-lg shadow-emerald-500/20"
         >
-          <Send className="w-4 h-4" />
+          {isMyTurn ? <Send className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
           <span>إرسال</span>
         </button>
       </form>

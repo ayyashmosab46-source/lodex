@@ -4,7 +4,9 @@ export type MiniGameType =
   | 'what_happened'
   | 'combine_clues'
   | 'draw_guess'
-  | 'who_am_i';
+  | 'who_am_i'
+  | 'falcon_eye'
+  | 'memory_game';
 
 export interface Player {
   id: string;
@@ -66,6 +68,9 @@ export interface RoomData {
   totalRounds: number;
   gameHistory: MiniGameType[];
   currentMiniGame: MiniGameType | null;
+  activeTeam?: 1 | 2;
+  teamTurnPhase?: 1 | 2;
+  teamTimeLeft?: number;
   roundStartTime: number;
   roundEndTime: number;
   roundDuration: number;

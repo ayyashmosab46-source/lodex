@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Palette, Eraser, Trash2, Send, Timer, Sparkles } from 'lucide-react';
+import { Palette, Trash2, Send, Lock } from 'lucide-react';
 import { Player, DrawingStroke, DrawingPoint, ChatMessage } from '../../types/game';
+import { TeamTurnBadge } from './TeamTurnBadge';
 
 interface DrawAndGuessGameProps {
   roundData: {
@@ -10,6 +11,8 @@ interface DrawAndGuessGameProps {
     category?: string;
   };
   currentPlayer: Player;
+  activeTeam?: 1 | 2;
+  teamTurnPhase?: 1 | 2;
   roundTimeLeft: number;
   drawingStrokes: DrawingStroke[];
   chatMessages: ChatMessage[];
@@ -21,18 +24,20 @@ interface DrawAndGuessGameProps {
 export const DrawAndGuessGame: React.FC<DrawAndGuessGameProps> = ({
   roundData,
   currentPlayer,
+  activeTeam = 1,
+  teamTurnPhase = 1,
   roundTimeLeft,
   drawingStrokes,
-  chatMessages,
   onDrawStroke,
   onClearCanvas,
   onSendAnswer,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawer = currentPlayer.id === roundData.drawerId;
+  const isMyTurn = currentPlayer.team === activeTeam;
 
   const [currentColor, setCurrentColor] = useState('#F59E0B');
-  const [brushSize, setBrushSize] = useState(4);
+  const [brushSize] = useState(4);
   const [isDrawing, setIsDrawing] = useState(false);
   const currentPoints = useRef<DrawingPoint[]>([]);
   const [guessInput, setGuessInput] = useState('');
@@ -140,19 +145,13 @@ export const DrawAndGuessGame: React.FC<DrawAndGuessGameProps> = ({
 
   return (
     <div className="max-w-xl mx-auto px-4 py-3 flex flex-col items-center">
-      {/* Header */}
-      <div className="w-full flex items-center justify-between mb-3 bg-slate-900/80 px-4 py-2 rounded-2xl border border-slate-800">
-        <div className="flex items-center gap-2 text-pink-400 font-bold text-xs">
-          <Palette className="w-4 h-4" />
-          <span>
-            {isDrawer ? 'دورك في الرسم 🎨' : `الرسام الآن: ${roundData.drawerNickname}`}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 font-mono font-bold text-amber-400 text-sm">
-          <Timer className="w-4 h-4" />
-          <span>{roundTimeLeft} ثانية</span>
-        </div>
-      </div>
+      {/* Team Turn & Countdown Bar */}
+      <TeamTurnBadge
+        activeTeam={activeTeam}
+        teamTurnPhase={teamTurnPhase}
+        roundTimeLeft={roundTimeLeft}
+        currentPlayer={currentPlayer}
+      />
 
       {/* Secret Word for Drawer */}
       {isDrawer && (
@@ -161,6 +160,9 @@ export const DrawAndGuessGame: React.FC<DrawAndGuessGameProps> = ({
           <span className="text-sm font-black text-pink-300 font-mono tracking-wide">
             {roundData.wordToDraw}
           </span>
+          <p className="text-[11px] text-pink-400/80 mt-1">
+            ارسم الكلمة بوضوح ليتمكن زميلك في الفريق من تخمينها!
+          </p>
         </div>
       )}
 
@@ -218,16 +220,21 @@ export const DrawAndGuessGame: React.FC<DrawAndGuessGameProps> = ({
             type="text"
             value={guessInput}
             onChange={(e) => setGuessInput(e.target.value)}
-            placeholder="خمّن الرسمة واكتب هنا..."
-            className="flex-1 bg-slate-900 border border-slate-700 focus:border-pink-400 rounded-2xl px-4 py-3 text-white placeholder-slate-500 text-sm outline-none font-bold transition"
-            autoFocus
+            disabled={!isMyTurn}
+            placeholder={
+              isMyTurn
+                ? 'خمّن الرسمة واكتب هنا...'
+                : 'انتظر دور فريقك للتخمين...'
+            }
+            className="flex-1 bg-slate-900 border border-slate-700 focus:border-pink-400 rounded-2xl px-4 py-3 text-white placeholder-slate-500 text-sm outline-none font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
+            autoFocus={isMyTurn}
           />
           <button
             type="submit"
-            disabled={!guessInput.trim()}
+            disabled={!isMyTurn || !guessInput.trim()}
             className="bg-pink-500 hover:bg-pink-400 text-slate-950 px-5 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-lg shadow-pink-500/20"
           >
-            <Send className="w-4 h-4" />
+            {isMyTurn ? <Send className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
             <span>تخمين</span>
           </button>
         </form>

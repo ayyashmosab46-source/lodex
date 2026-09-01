@@ -197,18 +197,32 @@ export class RealtimeClient {
     this.introTimeout = setTimeout(() => {
       if (!this.currentRoom || this.currentRoom.state !== 'round_intro') return;
 
+      const startingTeam: 1 | 2 = this.currentRoom.currentRound % 2 === 1 ? 1 : 2;
       this.currentRoom.state = 'playing';
+      this.currentRoom.activeTeam = startingTeam;
+      this.currentRoom.teamTurnPhase = 1;
+      this.currentRoom.teamTimeLeft = 30;
+      this.currentRoom.roundDuration = 60;
       this.currentRoom.roundStartTime = Date.now();
-      this.currentRoom.roundDuration = getRoundDuration(nextGame);
-      this.currentRoom.roundEndTime = this.currentRoom.roundStartTime + this.currentRoom.roundDuration * 1000;
+      this.currentRoom.roundEndTime = this.currentRoom.roundStartTime + 60 * 1000;
 
       this.broadcastRoomUpdate();
       this.emitLocal('game:round_started', {});
       this.broadcastToPeers('game:round_started', {});
 
-      let timeLeft = this.currentRoom.roundDuration;
-      this.emitLocal('game:timer', { timeLeft });
-      this.broadcastToPeers('game:timer', { timeLeft });
+      let teamTime = 30;
+      let phase: 1 | 2 = 1;
+
+      this.emitLocal('game:timer', {
+        timeLeft: teamTime,
+        activeTeam: this.currentRoom.activeTeam,
+        phase,
+      });
+      this.broadcastToPeers('game:timer', {
+        timeLeft: teamTime,
+        activeTeam: this.currentRoom.activeTeam,
+        phase,
+      });
 
       this.timerInterval = setInterval(() => {
         if (!this.currentRoom || this.currentRoom.state !== 'playing') {
@@ -216,26 +230,49 @@ export class RealtimeClient {
           return;
         }
 
-        timeLeft -= 1;
-        this.emitLocal('game:timer', { timeLeft: Math.max(0, timeLeft) });
-        this.broadcastToPeers('game:timer', { timeLeft: Math.max(0, timeLeft) });
+        teamTime -= 1;
+        this.currentRoom.teamTimeLeft = Math.max(0, teamTime);
 
         // Progressive reveal for WhoAmI
         if (nextGame === 'who_am_i' && this.currentRoom.roundData) {
-          if (timeLeft === 20 && this.currentRoom.roundData.unlockedCluesCount < 2) {
+          if (teamTime === 20 && this.currentRoom.roundData.unlockedCluesCount < 2) {
             this.currentRoom.roundData.unlockedCluesCount = 2;
             this.currentRoom.roundData.currentPoints = 75;
             this.broadcastRoomUpdate();
-          } else if (timeLeft === 10 && this.currentRoom.roundData.unlockedCluesCount < 3) {
+          } else if (teamTime === 10 && this.currentRoom.roundData.unlockedCluesCount < 3) {
             this.currentRoom.roundData.unlockedCluesCount = 3;
             this.currentRoom.roundData.currentPoints = 50;
             this.broadcastRoomUpdate();
           }
         }
 
-        if (timeLeft <= 0) {
-          this.clearHostTimers();
-          this.endRound(null);
+        this.emitLocal('game:timer', {
+          timeLeft: Math.max(0, teamTime),
+          activeTeam: this.currentRoom.activeTeam,
+          phase,
+        });
+        this.broadcastToPeers('game:timer', {
+          timeLeft: Math.max(0, teamTime),
+          activeTeam: this.currentRoom.activeTeam,
+          phase,
+        });
+
+        // When team time reaches 0
+        if (teamTime <= 0) {
+          if (phase === 1) {
+            // Automatically switch turn to the second team for 30s
+            phase = 2;
+            teamTime = 30;
+            const secondTeam: 1 | 2 = startingTeam === 1 ? 2 : 1;
+            this.currentRoom.activeTeam = secondTeam;
+            this.currentRoom.teamTurnPhase = 2;
+            this.currentRoom.teamTimeLeft = 30;
+            this.broadcastRoomUpdate();
+          } else {
+            // Both teams finished their 30s turn -> End Round
+            this.clearHostTimers();
+            this.endRound(null);
+          }
         }
       }, 1000);
     }, 3500);
@@ -450,7 +487,7 @@ export class RealtimeClient {
         players: { [hostPlayerId]: hostPlayer },
         state: 'lobby',
         currentRound: 0,
-        totalRounds: 10,
+        totalRounds: 12,
         gameHistory: [],
         currentMiniGame: null,
         roundStartTime: 0,

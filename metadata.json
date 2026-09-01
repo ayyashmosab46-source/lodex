@@ -1,6 +1,6 @@
 {
   "name": "لودكس | LODEKS",
-  "description": "منصة ألعاب جماعية عربية حماسية للهواتف - تحديات سريعة وممتعة بين الأصدقاء مع 6 ألعاب مصغرة متنوعة",
+  "description": "منصة ألعاب جماعية عربية حماسية ومنافسات جماعية بين فريقين في 12 جولة مليئة بالتحديات والذكاء والملاحظة والسرعة",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
