@@ -2,46 +2,43 @@
 
 @layer base {
   * {
-    font-family: 'Cairo', 'Readex Pro', system-ui, -apple-system, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
-
+  
   body {
     user-select: none;
     -webkit-user-select: none;
-    touch-action: manipulation;
+  }
+  
+  input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
   }
 }
 
-/* Custom glow and animations for LODEKS */
-@keyframes pulse-subtle {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.85; transform: scale(0.98); }
+/* Custom animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(245, 158, 11, 0.8);
+  }
 }
 
-@keyframes flash-hit {
-  0% { transform: scale(0.9); }
-  50% { transform: scale(1.08); }
-  100% { transform: scale(1); }
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
 }
 
-.animate-hit {
-  animation: flash-hit 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+@keyframes bounce-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
 }
 
-.glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card {
-  background: rgba(30, 41, 59, 0.65);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-/* Canvas drawing touch */
-canvas {
-  touch-action: none;
+.animate-bounce-subtle {
+  animation: bounce-subtle 2s ease-in-out infinite;
 }

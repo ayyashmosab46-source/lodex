@@ -1,50 +1,39 @@
-/**
- * Arabic string normalization for accurate and tolerant game answer comparison
- */
 export function normalizeArabic(text: string): string {
   if (!text) return '';
-
   return text
-    // Trim and lowercase
     .trim()
     .toLowerCase()
-    // Remove diacritics / Tashkeel
+    // Remove Arabic diacritics (tashkeel)
     .replace(/[\u064B-\u065F\u0670]/g, '')
-    // Normalize Alefs
+    // Normalize alef variants
     .replace(/[أإآٱ]/g, 'ا')
-    // Normalize Taa Marbuta to Haa
+    // Normalize taa marbouta and haa
     .replace(/ة/g, 'ه')
-    // Normalize Yaa / Alef Maqsura
+    // Normalize yaa and alef maqsoura
     .replace(/ى/g, 'ي')
-    // Remove tatweel (kashida)
-    .replace(/ـ/g, '')
-    // Remove common punctuation and symbols
-    .replace(/[.,/#!$%^&*;:{}=\-_`~()؟?،!]/g, '')
-    // Normalize spaces
-    .replace(/\s+/g, ' ');
+    // Normalize spaces and punctuation
+    .replace(/[ـ\-_,.!؟]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-/**
- * Checks if user input matches any target answer (allowing minor typos & definite article 'ال')
- */
-export function checkArabicMatch(userInput: string, targets: string[]): boolean {
-  const normInput = normalizeArabic(userInput);
-  if (!normInput) return false;
+export function isArabicMatch(input: string, target: string, aliases: string[] = []): boolean {
+  const normInput = normalizeArabic(input);
+  const normTarget = normalizeArabic(target);
 
-  // Also test version without leading 'ال'
-  const strippedInput = normInput.startsWith('ال') ? normInput.slice(2) : normInput;
+  if (!normInput || !normTarget) return false;
 
-  for (const target of targets) {
-    const normTarget = normalizeArabic(target);
-    const strippedTarget = normTarget.startsWith('ال') ? normTarget.slice(2) : normTarget;
+  if (normInput === normTarget) return true;
+  if (normInput.includes(normTarget) || normTarget.includes(normInput)) {
+    if (normInput.length >= 3 && normTarget.length >= 3) return true;
+  }
 
-    if (normInput === normTarget) return true;
-    if (strippedInput === strippedTarget) return true;
-    if (normInput === strippedTarget) return true;
-    if (strippedInput === normTarget) return true;
-
-    // Substring match for compound names if length > 3
-    if (normTarget.length >= 4 && normInput.includes(normTarget)) return true;
+  for (const alias of aliases) {
+    const normAlias = normalizeArabic(alias);
+    if (normInput === normAlias) return true;
+    if (normInput.includes(normAlias) || normAlias.includes(normInput)) {
+      if (normInput.length >= 3 && normAlias.length >= 3) return true;
+    }
   }
 
   return false;

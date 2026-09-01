@@ -1,106 +1,82 @@
-import React, { useEffect } from 'react';
+import React from 'react';
+import { Trophy, CheckCircle, XCircle, Award, ArrowRight } from 'lucide-react';
 import { RoomData, Player } from '../types/game';
-import { Trophy, ArrowLeft, CheckCircle2, Award, Zap, Sparkles } from 'lucide-react';
-import { playVictoryFanfare } from '../utils/audio';
 
 interface RoundResultViewProps {
   room: RoomData;
   currentPlayer: Player;
+  onNextRound?: () => void;
 }
 
-export const RoundResultView: React.FC<RoundResultViewProps> = ({ room, currentPlayer }) => {
-  const result = room.lastRoundResults;
-  const players = (Object.values(room.players) as Player[]).sort((a, b) => b.score - a.score);
+export const RoundResultView: React.FC<RoundResultViewProps> = ({
+  room,
+  currentPlayer,
+  onNextRound,
+}) => {
+  const results = room.lastRoundResults;
+  const isHost = currentPlayer.isHost;
 
-  useEffect(() => {
-    if (result && result.winnerId === currentPlayer.id) {
-      playVictoryFanfare();
-    }
-  }, [result, currentPlayer.id]);
+  const winnerPlayer = results?.winnerPlayerId ? room.players[results.winnerPlayerId] : null;
+  const isWinner = winnerPlayer?.id === currentPlayer.id;
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-4 flex flex-col items-center justify-between min-h-[calc(100vh-80px)] text-center animate-hit">
-      {/* Top Banner */}
-      <div className="w-full glass-panel rounded-3xl p-5 border border-slate-800 shadow-xl mb-3">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold text-xs mb-2">
-          <Award size={14} />
-          <span>نتيجة الجولة {room.currentRound} من {room.totalRounds}</span>
-        </div>
+    <div className="max-w-xl mx-auto px-4 py-8 flex flex-col items-center text-center">
+      {/* Status Badge */}
+      <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-4 shadow-xl">
+        {results?.winnerPlayerId ? (
+          <Trophy className="w-8 h-8 text-amber-400 animate-bounce-subtle" />
+        ) : (
+          <Award className="w-8 h-8 text-slate-400" />
+        )}
+      </div>
 
-        <h2 className="text-xl sm:text-2xl font-black text-white mb-1">
-          {result?.summaryText || 'انتهت الجولة!'}
-        </h2>
+      <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">
+        {results?.winnerPlayerId
+          ? isWinner
+            ? 'أحسنت! إجابة مذهلة وسريعة 🎯'
+            : `الفائز بهذه الجولة: ${winnerPlayer?.nickname} 👏`
+          : 'انتهى وقت الجولة! ⌛'}
+      </h2>
 
-        {result?.correctAnswer && (
-          <div className="mt-2 text-xs font-bold text-slate-300 bg-slate-900/90 py-1.5 px-3 rounded-xl border border-slate-800 inline-block">
-            الإجابة الصحيحة: <span className="text-amber-400 font-extrabold">{result.correctAnswer}</span>
+      {/* Correct Answer Card */}
+      <div className="w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-6 my-6 shadow-xl">
+        <p className="text-xs text-slate-400 font-bold mb-1">الإجابة الصحيحة هي:</p>
+        <p className="text-2xl font-black text-amber-400 mb-3">{results?.correctAnswer || 'غير محدد'}</p>
+        {results?.explanation && (
+          <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 text-xs text-slate-300 leading-relaxed text-right">
+            💡 {results.explanation}
           </div>
         )}
       </div>
 
-      {/* Leaderboard Table */}
-      <div className="w-full glass-panel rounded-3xl p-4 border border-slate-800 flex-1 flex flex-col mb-3">
-        <div className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-          <span>الترتيب العام</span>
-          <span>النقاط</span>
+      {/* Scores Summary */}
+      <div className="grid grid-cols-2 gap-3 w-full mb-6">
+        <div className="bg-blue-950/40 border border-blue-500/40 rounded-2xl p-4">
+          <p className="text-xs text-blue-300 font-bold mb-1">الفريق الأزرق (1)</p>
+          <p className="text-2xl font-black text-blue-400 font-mono">
+            {results?.team1Score ?? 0} نقطة
+          </p>
         </div>
-
-        <div className="space-y-2 flex-1 overflow-y-auto max-h-64 pr-1">
-          {players.map((p, idx) => {
-            const isMe = p.id === currentPlayer.id;
-            const roundScore = result?.scoresEarned[p.id] || 0;
-
-            return (
-              <div
-                key={p.id}
-                className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                  isMe
-                    ? 'bg-amber-500/10 border-amber-500/40 shadow-sm'
-                    : 'bg-slate-900/60 border-slate-800'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs font-black text-slate-400 w-4">
-                    #{idx + 1}
-                  </span>
-                  <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-lg">
-                    {p.avatar}
-                  </div>
-                  <div className="flex flex-col text-right">
-                    <span className="font-extrabold text-sm text-white">
-                      {p.nickname} {isMe && <span className="text-[10px] text-amber-400">(أنت)</span>}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Score and Earned Delta */}
-                <div className="flex items-center gap-2">
-                  {roundScore !== 0 && (
-                    <span
-                      className={`text-xs font-black px-2 py-0.5 rounded-lg ${
-                        roundScore > 0
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                          : 'bg-red-950 text-red-400 border border-red-800'
-                      }`}
-                    >
-                      {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
-                    </span>
-                  )}
-                  <span className="font-mono font-black text-base text-amber-400">
-                    {p.score}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+        <div className="bg-rose-950/40 border border-rose-500/40 rounded-2xl p-4">
+          <p className="text-xs text-rose-300 font-bold mb-1">الفريق الأحمر (2)</p>
+          <p className="text-2xl font-black text-rose-400 font-mono">
+            {results?.team2Score ?? 0} نقطة
+          </p>
         </div>
       </div>
 
-      {/* Countdown next round footer */}
-      <div className="w-full text-center py-2 text-xs font-bold text-slate-400 flex items-center justify-center gap-2">
-        <Sparkles size={14} className="text-amber-400 animate-spin" />
-        <span>الانتقال للجولة التالية خلال ثوانٍ...</span>
-      </div>
+      {/* Next Round Trigger */}
+      {isHost ? (
+        <button
+          onClick={onNextRound}
+          className="w-full py-3.5 px-6 rounded-2xl font-black text-slate-950 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 shadow-lg shadow-amber-500/20 text-sm flex items-center justify-center gap-2 transition cursor-pointer"
+        >
+          <span>الجولة التالية</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      ) : (
+        <p className="text-xs text-slate-400 font-bold">بانتظار المضيف للانتقال للجولة التالية...</p>
+      )}
     </div>
   );
 };

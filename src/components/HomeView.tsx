@@ -1,227 +1,204 @@
 import React, { useState } from 'react';
-import { PlusCircle, LogIn, Sparkles, Users, Trophy, Play, Zap } from 'lucide-react';
-import { playClickSound } from '../utils/audio';
-
-const AVATARS = ['🦁', '🦅', '🐪', '🚀', '👑', '⚡', '🍕', '🎮', '🏎️', '💎', '🔥', '🌟'];
+import { Sparkles, Users, Play, Plus, LogIn, Swords, HelpCircle, Volume2, Film, Puzzle, Palette, UserCheck } from 'lucide-react';
 
 interface HomeViewProps {
   onCreateRoom: (nickname: string, avatar: string) => void;
   onJoinRoom: (roomCode: string, nickname: string, avatar: string) => void;
+  isConnecting: boolean;
   errorMessage?: string;
-  isConnecting?: boolean;
 }
+
+const AVATARS = ['🦁', '🦅', '🐺', '🦊', '🐯', '🐼', '🦄', '🐲', '🚀', '👑', '⚡', '🔥'];
 
 export const HomeView: React.FC<HomeViewProps> = ({
   onCreateRoom,
   onJoinRoom,
-  errorMessage,
   isConnecting,
+  errorMessage,
 }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
   const [nickname, setNickname] = useState('');
-  const [roomCode, setRoomCode] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
+  const [selectedAvatar, setSelectedAvatar] = useState('🦁');
+  const [joinCode, setJoinCode] = useState('');
+  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
 
-  // Read ?room=... or ?join=... from URL if someone shared a direct join link
-  React.useEffect(() => {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const queryRoom = urlParams.get('room') || urlParams.get('join') || urlParams.get('code');
-      if (queryRoom) {
-        setRoomCode(queryRoom.toUpperCase().trim().slice(0, 4));
-        setActiveTab('join');
-      }
-    } catch {
-      // Ignore URL parsing errors
-    }
-  }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    playClickSound();
-
-    const cleanNick = nickname.trim() || 'لاعب لودكس';
-    if (activeTab === 'create') {
-      onCreateRoom(cleanNick, selectedAvatar);
-    } else {
-      if (!roomCode.trim()) return;
-      onJoinRoom(roomCode.trim(), cleanNick, selectedAvatar);
-    }
+    if (!nickname.trim()) return;
+    onCreateRoom(nickname.trim(), selectedAvatar);
   };
 
+  const handleJoin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nickname.trim() || !joinCode.trim()) return;
+    onJoinRoom(joinCode.trim().toUpperCase(), nickname.trim(), selectedAvatar);
+  };
+
+  const miniGamesList = [
+    { name: 'الألغاز والذكاء', icon: <HelpCircle className="w-4 h-4 text-emerald-400" />, desc: 'تحدي سرعة البديهة وحل الألغاز العميقة' },
+    { name: 'وش الصوت؟', icon: <Volume2 className="w-4 h-4 text-amber-400" />, desc: 'استمع للتأثير الصوتي وخمّن المصدر أولاً' },
+    { name: 'وش صار؟', icon: <Film className="w-4 h-4 text-purple-400" />, desc: 'تحدي الأحداث والمشاهد في أشهر المسلسلات' },
+    { name: 'ركّبها', icon: <Puzzle className="w-4 h-4 text-blue-400" />, desc: 'اجمع 4 دلائل واكتشف الرابط السري' },
+    { name: 'ارسم وخمّن', icon: <Palette className="w-4 h-4 text-pink-400" />, desc: 'رسم حي وفوري بين الفريقين وتخمين سريع' },
+    { name: 'مين أنا؟', icon: <UserCheck className="w-4 h-4 text-cyan-400" />, desc: 'اكتشف الشخصية الغامضة مع التلميحات التدريجية' },
+  ];
+
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-6 flex flex-col items-center justify-between min-h-[calc(100vh-70px)]">
-      {/* Hero Brand Section */}
-      <div className="w-full flex flex-col items-center text-center mt-2 mb-6">
-        {/* Animated Badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-indigo-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold mb-4 shadow-sm">
-          <Sparkles size={14} className="animate-spin text-amber-400" />
-          <span>منصة الألعاب الجماعية الأولى</span>
-        </div>
-
-        {/* Wordmark */}
-        <div className="relative mb-2">
-          <div className="text-6xl sm:text-7xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-400 drop-shadow-xl font-['Cairo']">
-            لودكس
-          </div>
-          <div className="text-xs sm:text-sm font-extrabold tracking-widest text-amber-400 uppercase">
-            L O D E K S
-          </div>
-        </div>
-
-        <p className="text-slate-400 text-sm sm:text-base font-semibold max-w-xs mt-1">
-          اجمع الشلة والعبوا 10 جولات حماسية وسريعة على الجوال!
-        </p>
-
-        {/* Quick Games Pills */}
-        <div className="flex flex-wrap justify-center gap-1.5 mt-4 max-w-sm">
-          <span className="text-[11px] font-bold bg-slate-900/90 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full">💡 الألغاز</span>
-          <span className="text-[11px] font-bold bg-slate-900/90 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-full">🔊 وش الصوت؟</span>
-          <span className="text-[11px] font-bold bg-slate-900/90 text-rose-400 border border-rose-500/20 px-2.5 py-1 rounded-full">🎬 وش صار؟</span>
-          <span className="text-[11px] font-bold bg-slate-900/90 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full">🧩 ركّبها</span>
-          <span className="text-[11px] font-bold bg-slate-900/90 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded-full">🎨 ارسم وخمّن</span>
-          <span className="text-[11px] font-bold bg-slate-900/90 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-full">🕵️ مين أنا؟</span>
-        </div>
+    <div className="max-w-xl mx-auto px-4 py-8 flex flex-col items-center">
+      {/* Hero Badge */}
+      <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-4 py-1.5 rounded-full text-amber-400 text-xs font-bold mb-6 animate-bounce-subtle">
+        <Sparkles className="w-3.5 h-3.5" />
+        <span>تحديات جماعية حماسية للأصدقاء والعائلة</span>
       </div>
 
-      {/* Main Interaction Card */}
-      <div className="w-full glass-panel rounded-3xl p-5 sm:p-6 shadow-2xl border border-slate-800 relative overflow-hidden mb-6">
-        {/* Glow accent */}
-        <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+      {/* Main Logo & Title */}
+      <div className="text-center mb-8">
+        <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-200 flex items-center justify-center font-black text-slate-950 text-4xl shadow-2xl shadow-amber-500/30 mb-3 transform hover:rotate-3 transition">
+          ل
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+          لـــودكــــس <span className="text-amber-400">| LODEKS</span>
+        </h1>
+        <p className="text-slate-400 text-sm mt-1 max-w-sm mx-auto">
+          تحدَّ أصدقاءك في 6 ألعاب مصغرة حماسية مباشرة بنظام الفرق والنقاط
+        </p>
+      </div>
 
-        {/* Tabs Switcher */}
-        <div className="grid grid-cols-2 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-5">
+      {/* Error Banner */}
+      {errorMessage && (
+        <div className="w-full bg-red-950/80 border border-red-800/80 text-red-200 px-4 py-2.5 rounded-xl text-xs text-center mb-4">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Action Card */}
+      <div className="w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl backdrop-blur-md">
+        {/* Nickname Input */}
+        <div className="mb-5">
+          <label className="block text-xs font-bold text-slate-300 mb-2">اسمك في اللعبة</label>
+          <input
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="مثال: البطل، القناص..."
+            maxLength={15}
+            className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 text-sm outline-none transition font-bold"
+          />
+        </div>
+
+        {/* Avatar Selector */}
+        <div className="mb-6">
+          <label className="block text-xs font-bold text-slate-300 mb-2">اختر شخصيتك (الأفاتار)</label>
+          <div className="grid grid-cols-6 gap-2 bg-slate-950 p-2.5 rounded-2xl border border-slate-800">
+            {AVATARS.map((av) => (
+              <button
+                key={av}
+                type="button"
+                onClick={() => setSelectedAvatar(av)}
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl text-xl sm:text-2xl flex items-center justify-center transition cursor-pointer ${
+                  selectedAvatar === av
+                    ? 'bg-amber-500 scale-110 shadow-lg shadow-amber-500/30'
+                    : 'bg-slate-900 hover:bg-slate-800 opacity-70 hover:opacity-100'
+                }`}
+              >
+                {av}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tabs: Create vs Join */}
+        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 mb-5">
           <button
             type="button"
-            onClick={() => {
-              playClickSound();
-              setActiveTab('create');
-            }}
-            className={`py-2.5 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all ${
+            onClick={() => setActiveTab('create')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
               activeTab === 'create'
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md'
+                ? 'bg-amber-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <PlusCircle size={17} />
-            <span>إنشاء غرفة</span>
+            <Plus className="w-4 h-4" />
+            إنشاء غرفة جديدة
           </button>
           <button
             type="button"
-            onClick={() => {
-              playClickSound();
-              setActiveTab('join');
-            }}
-            className={`py-2.5 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all ${
+            onClick={() => setActiveTab('join')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
               activeTab === 'join'
-                ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-md'
+                ? 'bg-amber-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <LogIn size={17} />
-            <span>انضمام لغرفة</span>
+            <LogIn className="w-4 h-4" />
+            الانضمام لغرفة
           </button>
         </div>
 
-        {/* Error message */}
-        {errorMessage && (
-          <div className="mb-4 p-3 bg-red-950/60 border border-red-800/50 rounded-xl text-red-300 text-xs font-bold text-center">
-            {errorMessage}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Avatar Selector */}
-          <div>
-            <label className="block text-xs font-bold text-slate-300 mb-2">
-              اختر صورتك الرمزية:
-            </label>
-            <div className="grid grid-cols-6 gap-2">
-              {AVATARS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => {
-                    playClickSound();
-                    setSelectedAvatar(emoji);
-                  }}
-                  className={`w-11 h-11 rounded-xl text-xl flex items-center justify-center transition-all ${
-                    selectedAvatar === emoji
-                      ? 'bg-amber-500/20 border-2 border-amber-400 scale-105 shadow-md shadow-amber-500/20'
-                      : 'bg-slate-900/80 border border-slate-800 hover:bg-slate-800'
-                  }`}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Nickname Input */}
-          <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">
-              اسمك المستعار في اللعبة:
-            </label>
-            <input
-              type="text"
-              required
-              maxLength={15}
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="مثال: البطل، داحم، سارة..."
-              className="w-full bg-slate-950/90 border border-slate-800 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 font-bold text-sm outline-none transition-all text-right"
-            />
-          </div>
-
-          {/* Room Code Input (for Join tab) */}
-          {activeTab === 'join' && (
+        {/* Form Actions */}
+        {activeTab === 'create' ? (
+          <form onSubmit={handleCreate}>
+            <button
+              type="submit"
+              disabled={isConnecting || !nickname.trim()}
+              className="w-full bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isConnecting ? (
+                <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-current" />
+                  إنشاء الغرفة وبدء التحدي
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleJoin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                رمز الغرفة (4 خانات):
-              </label>
               <input
                 type="text"
-                required
-                maxLength={4}
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                placeholder="مثال: LK72"
-                className="w-full bg-slate-950/90 border border-slate-800 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 rounded-xl px-4 py-3 text-amber-400 placeholder-slate-600 font-mono font-black text-center text-lg tracking-widest uppercase outline-none transition-all"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="أدخل رمز الغرفة (مثال: ABCD)"
+                maxLength={6}
+                className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-white text-center tracking-widest font-mono text-base uppercase placeholder-slate-500 outline-none transition font-bold"
               />
             </div>
-          )}
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isConnecting}
-            className={`w-full py-3.5 rounded-xl font-black text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-98 disabled:opacity-50 ${
-              activeTab === 'create'
-                ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 shadow-amber-500/25 hover:brightness-105'
-                : 'bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-500 text-white shadow-indigo-500/25 hover:brightness-105'
-            }`}
-          >
-            {isConnecting ? (
-              <span>جاري الاتصال...</span>
-            ) : activeTab === 'create' ? (
-              <>
-                <Play size={18} fill="currentColor" />
-                <span>إنشاء غرفة جديدة</span>
-              </>
-            ) : (
-              <>
-                <LogIn size={18} />
-                <span>دخول الغرفة</span>
-              </>
-            )}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={isConnecting || !nickname.trim() || !joinCode.trim()}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-blue-500/20 text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isConnecting ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <>
+                  <LogIn className="w-4 h-4" />
+                  دخول الغرفة
+                </>
+              )}
+            </button>
+          </form>
+        )}
       </div>
 
-      {/* Footer Info */}
-      <div className="text-center text-xs text-slate-500 font-medium">
-        <span>🎮 العب مع أصحابك من أي جوال مباشرة وبدون تسجيل</span>
+      {/* Mini-Games Preview Grid */}
+      <div className="w-full mt-10">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">
+          الألعاب المصغرة المتضمنة في لودكس
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {miniGamesList.map((g, i) => (
+            <div
+              key={i}
+              className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3 flex flex-col items-center text-center hover:border-slate-700 transition"
+            >
+              <div className="p-2 rounded-xl bg-slate-950 mb-2">{g.icon}</div>
+              <p className="text-xs font-bold text-slate-200">{g.name}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">{g.desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

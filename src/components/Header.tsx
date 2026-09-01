@@ -1,92 +1,85 @@
-import React, { useState } from 'react';
-import { Volume2, VolumeX, LogOut, Copy, Check, Users, Sparkles } from 'lucide-react';
-import { toggleAudio, isAudioEnabled, playClickSound } from '../utils/audio';
-import { RoomData, Player } from '../types/game';
+import React from 'react';
+import { Sparkles, Users, Trophy } from 'lucide-react';
+import { Player } from '../types/game';
 
 interface HeaderProps {
-  room: RoomData | null;
-  currentPlayer: Player | null;
-  onLeaveRoom: () => void;
+  roomCode?: string;
+  currentPlayer?: Player | null;
+  team1Score?: number;
+  team2Score?: number;
+  currentRound?: number;
+  totalRounds?: number;
+  onLeaveRoom?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ room, currentPlayer, onLeaveRoom }) => {
-  const [audioOn, setAudioOn] = useState(isAudioEnabled());
-  const [copied, setCopied] = useState(false);
-
-  const handleToggleSound = () => {
-    const next = toggleAudio();
-    setAudioOn(next);
-    if (next) playClickSound();
-  };
-
-  const handleCopyCode = () => {
-    if (!room) return;
-    navigator.clipboard.writeText(room.code);
-    setCopied(true);
-    playClickSound();
-    setTimeout(() => setCopied(false), 2000);
-  };
-
+export const Header: React.FC<HeaderProps> = ({
+  roomCode,
+  currentPlayer,
+  team1Score = 0,
+  team2Score = 0,
+  currentRound = 0,
+  totalRounds = 10,
+  onLeaveRoom,
+}) => {
   return (
-    <header className="w-full max-w-lg mx-auto px-4 py-3 flex items-center justify-between z-30 sticky top-0 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/60">
-      {/* Brand / Logo */}
-      <div className="flex items-center gap-2">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-500 p-[2px] shadow-lg shadow-amber-500/20">
-          <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center font-black text-amber-400 text-lg">
-            L
+    <header className="w-full bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50 px-4 py-2.5">
+      <div className="max-w-4xl mx-auto flex items-center justify-between">
+        {/* Brand */}
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-amber-500/20">
+            ل
           </div>
-        </div>
-        <div className="flex flex-col">
-          <div className="flex items-center gap-1.5 leading-none">
-            <span className="font-black text-xl tracking-tight text-white">لودكس</span>
-            <span className="text-[10px] font-bold tracking-widest text-amber-400 uppercase bg-amber-500/10 px-1.5 py-0.5 rounded">LODEKS</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Room and Status Info */}
-      <div className="flex items-center gap-2">
-        {room && (
-          <>
-            {/* Room Code Badge */}
-            <button
-              onClick={handleCopyCode}
-              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-200 active:scale-95 transition-all shadow-inner"
-              title="نسخ رمز الغرفة"
-            >
-              <span className="text-slate-400">كود:</span>
-              <span className="font-mono text-amber-400 tracking-wider font-extrabold">{room.code}</span>
-              {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} className="text-slate-400" />}
-            </button>
-
-            {/* Round indicator if in game */}
-            {room.state !== 'lobby' && (
-              <div className="bg-indigo-500/20 border border-indigo-500/30 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-300">
-                {room.currentRound}/{room.totalRounds}
+          <div>
+            <h1 className="font-black text-base md:text-lg text-amber-400 leading-tight">
+              لودكس <span className="text-xs text-slate-400 font-mono tracking-widest">LODEKS</span>
+            </h1>
+            {roomCode && (
+              <div className="flex items-center gap-1 text-[11px] text-slate-400 font-mono">
+                <span>غرفة:</span>
+                <span className="text-amber-300 font-bold tracking-wider">{roomCode}</span>
               </div>
             )}
-          </>
+          </div>
+        </div>
+
+        {/* Live Team Scores */}
+        {roomCode && currentRound > 0 && (
+          <div className="flex items-center gap-2 bg-slate-950/80 px-3 py-1 rounded-xl border border-slate-800 text-xs">
+            <div className="flex items-center gap-1.5 font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+              <span className="text-blue-400">فريق 1:</span>
+              <span className="text-white">{team1Score}</span>
+            </div>
+            <div className="text-slate-600">|</div>
+            <div className="flex items-center gap-1.5 font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+              <span className="text-rose-400">فريق 2:</span>
+              <span className="text-white">{team2Score}</span>
+            </div>
+          </div>
         )}
 
-        {/* Audio Toggle */}
-        <button
-          onClick={handleToggleSound}
-          className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 active:scale-95 transition-all"
-          title={audioOn ? "كتم الصوت" : "تشغيل الصوت"}
-        >
-          {audioOn ? <Volume2 size={16} className="text-amber-400" /> : <VolumeX size={16} className="text-slate-500" />}
-        </button>
+        {/* Player Profile & Leave */}
+        <div className="flex items-center gap-2">
+          {currentPlayer && (
+            <div className="flex items-center gap-2 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/60">
+              <span className="text-lg">{currentPlayer.avatar}</span>
+              <div className="text-right hidden sm:block">
+                <p className="text-xs font-bold text-slate-200 leading-tight">{currentPlayer.nickname}</p>
+                <p className="text-[10px] text-amber-400 font-mono font-bold">{currentPlayer.score} نقطة</p>
+              </div>
+            </div>
+          )}
 
-        {/* Leave Room Button */}
-        {room && (
-          <button
-            onClick={onLeaveRoom}
-            className="w-8 h-8 rounded-lg bg-red-950/40 border border-red-800/40 flex items-center justify-center text-red-400 hover:bg-red-900/40 active:scale-95 transition-all"
-            title="الخروج من الغرفة"
-          >
-            <LogOut size={15} />
-          </button>
-        )}
+          {onLeaveRoom && roomCode && (
+            <button
+              onClick={onLeaveRoom}
+              className="text-xs px-2.5 py-1 rounded-lg bg-red-950/50 hover:bg-red-900/60 text-red-300 border border-red-800/50 transition cursor-pointer"
+            >
+              خروج
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

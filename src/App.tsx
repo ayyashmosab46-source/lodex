@@ -1,25 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { RoomData, Player, DrawStroke } from './types/game';
+import { RoomData, Player, MiniGameType, DrawingStroke, ChatMessage } from './types/game';
 import { Header } from './components/Header';
 import { HomeView } from './components/HomeView';
 import { LobbyView } from './components/LobbyView';
 import { RoundIntroView } from './components/RoundIntroView';
+import { RoundResultView } from './components/RoundResultView';
+import { FinalResultsView } from './components/FinalResultsView';
 import { RiddlesGame } from './components/minigames/RiddlesGame';
 import { SoundGuessGame } from './components/minigames/SoundGuessGame';
 import { WhatHappenedGame } from './components/minigames/WhatHappenedGame';
 import { CombineCluesGame } from './components/minigames/CombineCluesGame';
 import { DrawAndGuessGame } from './components/minigames/DrawAndGuessGame';
 import { WhoAmIGame } from './components/minigames/WhoAmIGame';
-import { RoundResultView } from './components/RoundResultView';
-import { FinalResultsView } from './components/FinalResultsView';
-import { playClickSound, playPopSound, playCaughtAlarm } from './utils/audio';
 import { getBackendUrl } from './utils/config';
+import { soundManager } from './utils/audio';
 
-export default function App() {
+export function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [room, setRoom] = useState<RoomData | null>(null);
-  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [playerId, setPlayerId] = useState<string | null>(() => {
+    return localStorage.getItem('lodeks_player_id') || null;
+  });
+  const [roundTimeLeft, setRoundTimeLeft] = useState<number>(30);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
@@ -28,11 +31,16 @@ export default function App() {
   roomRef.current = room;
   playerIdRef.current = playerId;
 
+  // Persist playerId
+  useEffect(() => {
+    if (playerId) {
+      localStorage.setItem('lodeks_player_id', playerId);
+    }
+  }, [playerId]);
+
   // Initialize Socket.io client
   useEffect(() => {
     const backendUrl = getBackendUrl();
-    console.log('[LODEKS] Connecting to game backend at:', backendUrl || '(same origin)');
-
     const s = io(backendUrl || undefined, {
       transports: ['polling', 'websocket'],
       reconnection: true,
@@ -43,9 +51,8 @@ export default function App() {
     });
 
     s.on('connect', () => {
-      console.log('[LODEKS] Socket connected successfully:', s.id);
+      console.log('[LODEKS] Socket connected:', s.id);
       setErrorMessage('');
-      // If we have an active room and playerId, ensure socket joins the room channel
       if (roomRef.current && playerIdRef.current) {
         s.emit('room:join', {
           roomCode: roomRef.current.code,
@@ -57,42 +64,37 @@ export default function App() {
     });
 
     s.on('connect_error', (err) => {
-      console.warn('[LODEKS] Socket connection notice:', err.message);
+      console.warn('[LODEKS] Socket notice:', err.message);
     });
 
     s.on('room:update', (updatedRoom: RoomData) => {
       setRoom(updatedRoom);
-      playPopSound();
+      setIsConnecting(false);
     });
 
-    s.on('draw:stroke', (stroke: DrawStroke) => {
-      setRoom((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          drawingStrokes: [...prev.drawingStrokes, stroke],
-        };
-      });
+    s.on('game:timer', ({ timeLeft }: { timeLeft: number }) => {
+      setRoundTimeLeft(timeLeft);
+      if (timeLeft <= 5 && timeLeft > 0) {
+        soundManager.playCountdown();
+      }
     });
 
-    s.on('draw:clear', () => {
-      setRoom((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          drawingStrokes: [],
-        };
-      });
+    s.on('game:round_started', () => {
+      soundManager.playBeep(520, 0.2);
     });
 
-    s.on('draw:sync', (strokes: DrawStroke[]) => {
-      setRoom((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          drawingStrokes: strokes,
-        };
-      });
+    s.on('game:round_ended', () => {
+      soundManager.playSuccess();
+    });
+
+    s.on('game:answer_result', ({ correct, playerId: responderId }: { correct: boolean; playerId: string }) => {
+      if (responderId === playerIdRef.current) {
+        if (correct) {
+          soundManager.playSuccess();
+        } else {
+          soundManager.playError();
+        }
+      }
     });
 
     setSocket(s);
@@ -104,18 +106,17 @@ export default function App() {
 
   const currentPlayer: Player | null = room && playerId ? room.players[playerId] || null : null;
 
-  // Handle Room Actions (with instant REST fallback)
+  // Team scores
+  const playersList: Player[] = room ? Object.values(room.players) : [];
+  const team1Score = playersList.filter((p) => p.team === 1).reduce((acc, p) => acc + p.score, 0);
+  const team2Score = playersList.filter((p) => p.team === 2).reduce((acc, p) => acc + p.score, 0);
+
+  // Handlers
   const handleCreateRoom = async (nickname: string, avatar: string) => {
     setIsConnecting(true);
     setErrorMessage('');
 
-    const backendUrl = getBackendUrl();
-    let resolved = false;
-
-    // Helper to finish room creation
     const finishCreation = (pId: string, rData?: RoomData) => {
-      if (resolved) return;
-      resolved = true;
       setIsConnecting(false);
       setPlayerId(pId);
       if (rData) setRoom(rData);
@@ -131,7 +132,6 @@ export default function App() {
       }
     };
 
-    // 1. Try Socket.io if connected
     if (socket && socket.connected) {
       socket.emit(
         'room:create',
@@ -140,7 +140,6 @@ export default function App() {
           if (res && res.success && res.playerId) {
             finishCreation(res.playerId);
           } else if (res && res.error) {
-            resolved = true;
             setIsConnecting(false);
             setErrorMessage(res.error);
           }
@@ -148,11 +147,11 @@ export default function App() {
       );
     }
 
-    // 2. Immediate REST Fallback / Parallel Fast Track
-    const restTimer = setTimeout(async () => {
-      if (resolved) return;
+    // Fast REST fallback
+    setTimeout(async () => {
+      if (roomRef.current) return;
       try {
-        const fetchUrl = backendUrl ? `${backendUrl}/api/rooms/create` : '/api/rooms/create';
+        const fetchUrl = '/api/rooms/create';
         const res = await fetch(fetchUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -162,36 +161,22 @@ export default function App() {
         if (data && data.success && data.playerId) {
           finishCreation(data.playerId, data.room);
         } else if (data && data.error) {
-          resolved = true;
           setIsConnecting(false);
           setErrorMessage(data.error);
         }
-      } catch (err) {
-        console.warn('REST create room fallback failed:', err);
+      } catch (e) {
+        console.warn('REST fallback notice:', e);
       }
-    }, 1500);
-
-    // 3. Timeout safeguard
-    setTimeout(() => {
-      if (!resolved) {
-        clearTimeout(restTimer);
-        setIsConnecting(false);
-        setErrorMessage('استغرق الاتصال وقتاً أطول من المتوقع. تأكد من اتصال الإنترنت ثم أعد المحاولة.');
-      }
-    }, 10000);
+    }, 1200);
   };
 
   const handleJoinRoom = async (roomCode: string, nickname: string, avatar: string) => {
     setIsConnecting(true);
     setErrorMessage('');
 
-    const backendUrl = getBackendUrl();
     const cleanCode = roomCode.toUpperCase().trim();
-    let resolved = false;
 
     const finishJoin = (pId: string, rData?: RoomData) => {
-      if (resolved) return;
-      resolved = true;
       setIsConnecting(false);
       setPlayerId(pId);
       if (rData) setRoom(rData);
@@ -207,7 +192,6 @@ export default function App() {
       }
     };
 
-    // 1. Try Socket.io if connected
     if (socket && socket.connected) {
       socket.emit(
         'room:join',
@@ -216,7 +200,6 @@ export default function App() {
           if (res && res.success && res.playerId) {
             finishJoin(res.playerId);
           } else if (res && res.error) {
-            resolved = true;
             setIsConnecting(false);
             setErrorMessage(res.error);
           }
@@ -224,221 +207,196 @@ export default function App() {
       );
     }
 
-    // 2. Fast REST fallback
-    const restTimer = setTimeout(async () => {
-      if (resolved) return;
+    // Fast REST fallback
+    setTimeout(async () => {
+      if (roomRef.current) return;
       try {
-        const fetchUrl = backendUrl ? `${backendUrl}/api/rooms/join` : '/api/rooms/join';
+        const fetchUrl = '/api/rooms/join';
         const res = await fetch(fetchUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roomCode: cleanCode,
-            nickname,
-            avatar,
-            existingPlayerId: playerId || undefined,
-          }),
+          body: JSON.stringify({ roomCode: cleanCode, nickname, avatar, existingPlayerId: playerId || undefined }),
         });
         const data = await res.json();
         if (data && data.success && data.playerId) {
           finishJoin(data.playerId, data.room);
         } else if (data && data.error) {
-          resolved = true;
           setIsConnecting(false);
           setErrorMessage(data.error);
         }
-      } catch (err) {
-        console.warn('REST join room fallback error:', err);
+      } catch (e) {
+        console.warn('REST fallback notice:', e);
       }
-    }, 1500);
-
-    // 3. Timeout safeguard
-    setTimeout(() => {
-      if (!resolved) {
-        clearTimeout(restTimer);
-        setIsConnecting(false);
-        setErrorMessage('تعذر العثور على الغرفة أو استغرق الاتصال وقتاً طويلاً. تأكد من صحة الرمز.');
-      }
-    }, 10000);
+    }, 1200);
   };
 
   const handleToggleReady = () => {
-    if (!socket) return;
+    if (!socket || !room || !playerId) return;
     socket.emit('player:ready');
   };
 
-  const handleSwitchTeam = () => {
-    if (!socket) return;
-    socket.emit('player:switch_team');
+  const handleChangeTeam = (team: 1 | 2) => {
+    if (!socket || !room || !playerId) return;
+    socket.emit('player:team', { team });
   };
 
   const handleStartGame = () => {
-    if (!socket) return;
+    if (!socket || !room || !playerId) return;
     socket.emit('game:start');
   };
 
-  const handleSoundAnswer = (optionIndex: number) => {
-    if (!socket) return;
-    socket.emit('game:sound_answer', { optionIndex });
-  };
-
-  const handleWhatHappenedAnswer = (optionIndex: number) => {
-    if (!socket) return;
-    socket.emit('game:what_happened_answer', { optionIndex });
-  };
-
-  const handleWhoAmIAnswer = (optionIndex: number) => {
-    if (!socket) return;
-    socket.emit('game:who_am_i_answer', { optionIndex });
-  };
-
-  const handleSubmitGuess = (text: string) => {
-    if (!socket) return;
-    socket.emit('game:submit_guess', { text });
-  };
-
-  const handleSendStroke = (stroke: DrawStroke) => {
-    if (!socket) return;
-    socket.emit('draw:stroke', stroke);
-  };
-
-  const handleClearCanvas = () => {
-    if (!socket) return;
-    socket.emit('draw:clear');
-  };
-
-  const handleUndoStroke = () => {
-    if (!socket) return;
-    socket.emit('draw:undo');
+  const handleNextRound = () => {
+    if (!socket || !room || !playerId) return;
+    socket.emit('game:next_round');
   };
 
   const handlePlayAgain = () => {
-    if (!socket) return;
+    if (!socket || !room || !playerId) return;
     socket.emit('game:play_again');
   };
 
+  const handleSendAnswer = (answer: string) => {
+    if (!socket || !room || !playerId) return;
+    socket.emit('game:answer', { answer });
+  };
+
+  const handleDrawStroke = (stroke: DrawingStroke) => {
+    if (!socket || !room || !playerId) return;
+    socket.emit('draw:stroke', { stroke });
+  };
+
+  const handleClearCanvas = () => {
+    if (!socket || !room || !playerId) return;
+    socket.emit('draw:clear');
+  };
+
   const handleLeaveRoom = () => {
-    if (socket) {
-      socket.disconnect();
-      socket.connect();
+    if (socket && room && playerId) {
+      socket.emit('room:leave');
     }
     setRoom(null);
-    setPlayerId(null);
-    setErrorMessage('');
+  };
+
+  // Render Mini-Game Active Screen
+  const renderActiveMiniGame = () => {
+    if (!room || !currentPlayer || !room.roundData) return null;
+
+    switch (room.currentMiniGame) {
+      case 'riddles':
+        return (
+          <RiddlesGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            roundTimeLeft={roundTimeLeft}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      case 'sound_guess':
+        return (
+          <SoundGuessGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            roundTimeLeft={roundTimeLeft}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      case 'what_happened':
+        return (
+          <WhatHappenedGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            roundTimeLeft={roundTimeLeft}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      case 'combine_clues':
+        return (
+          <CombineCluesGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            roundTimeLeft={roundTimeLeft}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      case 'draw_guess':
+        return (
+          <DrawAndGuessGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            roundTimeLeft={roundTimeLeft}
+            drawingStrokes={room.drawingStrokes || []}
+            chatMessages={room.chatMessages || []}
+            onDrawStroke={handleDrawStroke}
+            onClearCanvas={handleClearCanvas}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      case 'who_am_i':
+        return (
+          <WhoAmIGame
+            roundData={room.roundData}
+            currentPlayer={currentPlayer}
+            roundTimeLeft={roundTimeLeft}
+            onSendAnswer={handleSendAnswer}
+          />
+        );
+      default:
+        return null;
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-amber-500 selection:text-slate-950 font-['Readex_Pro']">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Cairo',sans-serif]">
       <Header
-        room={room}
+        roomCode={room?.code}
         currentPlayer={currentPlayer}
-        onLeaveRoom={handleLeaveRoom}
+        team1Score={team1Score}
+        team2Score={team2Score}
+        currentRound={room?.currentRound || 0}
+        totalRounds={room?.totalRounds || 10}
+        onLeaveRoom={room ? handleLeaveRoom : undefined}
       />
 
-      <main className="flex-1 flex flex-col justify-center items-center w-full">
-        {/* VIEW 1: HOME (No room) */}
-        {!room && (
+      <main className="flex-1 flex flex-col justify-center">
+        {!room || !currentPlayer ? (
           <HomeView
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
-            errorMessage={errorMessage}
             isConnecting={isConnecting}
+            errorMessage={errorMessage}
           />
-        )}
-
-        {/* VIEW 2: LOBBY */}
-        {room && room.state === 'lobby' && currentPlayer && (
+        ) : room.state === 'lobby' ? (
           <LobbyView
             room={room}
             currentPlayer={currentPlayer}
             onToggleReady={handleToggleReady}
-            onSwitchTeam={handleSwitchTeam}
+            onChangeTeam={handleChangeTeam}
             onStartGame={handleStartGame}
           />
-        )}
-
-        {/* VIEW 3: ROUND INTRO */}
-        {room && room.state === 'round_intro' && currentPlayer && (
+        ) : room.state === 'round_intro' && room.currentMiniGame ? (
           <RoundIntroView
-            room={room}
-            currentPlayer={currentPlayer}
+            miniGame={room.currentMiniGame}
+            currentRound={room.currentRound}
+            totalRounds={room.totalRounds}
           />
-        )}
-
-        {/* VIEW 4: ACTIVE MINI-GAME */}
-        {room && room.state === 'in_round' && currentPlayer && (
-          <>
-            {room.currentMiniGame === 'riddles' && (
-              <RiddlesGame
-                room={room}
-                currentPlayer={currentPlayer}
-                onSubmitGuess={handleSubmitGuess}
-              />
-            )}
-
-            {room.currentMiniGame === 'sound_guess' && (
-              <SoundGuessGame
-                room={room}
-                currentPlayer={currentPlayer}
-                onAnswer={handleSoundAnswer}
-              />
-            )}
-
-            {room.currentMiniGame === 'what_happened' && (
-              <WhatHappenedGame
-                room={room}
-                currentPlayer={currentPlayer}
-                onAnswer={handleWhatHappenedAnswer}
-              />
-            )}
-
-            {room.currentMiniGame === 'combine_clues' && (
-              <CombineCluesGame
-                room={room}
-                currentPlayer={currentPlayer}
-                onSubmitGuess={handleSubmitGuess}
-              />
-            )}
-
-            {room.currentMiniGame === 'draw_guess' && (
-              <DrawAndGuessGame
-                room={room}
-                currentPlayer={currentPlayer}
-                onSendStroke={handleSendStroke}
-                onClearCanvas={handleClearCanvas}
-                onUndoStroke={handleUndoStroke}
-                onSubmitGuess={handleSubmitGuess}
-              />
-            )}
-
-            {room.currentMiniGame === 'who_am_i' && (
-              <WhoAmIGame
-                room={room}
-                currentPlayer={currentPlayer}
-                onAnswer={handleWhoAmIAnswer}
-              />
-            )}
-          </>
-        )}
-
-        {/* VIEW 5: ROUND RESULT */}
-        {room && room.state === 'round_result' && currentPlayer && (
+        ) : room.state === 'playing' ? (
+          renderActiveMiniGame()
+        ) : room.state === 'round_result' ? (
           <RoundResultView
             room={room}
             currentPlayer={currentPlayer}
+            onNextRound={handleNextRound}
           />
-        )}
-
-        {/* VIEW 6: FINAL MATCH END PODIUM */}
-        {room && room.state === 'match_end' && currentPlayer && (
+        ) : room.state === 'final_results' ? (
           <FinalResultsView
             room={room}
             currentPlayer={currentPlayer}
             onPlayAgain={handlePlayAgain}
-            onLeave={handleLeaveRoom}
           />
-        )}
+        ) : null}
       </main>
     </div>
   );
 }
+
+export default App;

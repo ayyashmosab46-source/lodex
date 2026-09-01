@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
-import { Copy, Check, Users, Crown, Play, Sparkles, CheckCircle2, Circle, AlertCircle, Share2 } from 'lucide-react';
+import React from 'react';
+import { Copy, Check, Play, Shield, Users, ArrowLeftRight, CheckCircle2, Circle } from 'lucide-react';
 import { RoomData, Player } from '../types/game';
-import { playClickSound } from '../utils/audio';
 
 interface LobbyViewProps {
   room: RoomData;
   currentPlayer: Player;
   onToggleReady: () => void;
-  onSwitchTeam: () => void;
+  onChangeTeam: (team: 1 | 2) => void;
   onStartGame: () => void;
 }
 
@@ -15,280 +14,205 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   room,
   currentPlayer,
   onToggleReady,
-  onSwitchTeam,
+  onChangeTeam,
   onStartGame,
 }) => {
-  const [copied, setCopied] = useState(false);
-  const players = Object.values(room.players) as Player[];
-  const connectedPlayers = players.filter((p) => p.isConnected);
+  const [copied, setCopied] = React.useState(false);
+
+  const playersList: Player[] = Object.values(room.players) as Player[];
+  const team1Players = playersList.filter((p) => p.team === 1);
+  const team2Players = playersList.filter((p) => p.team === 2);
+
   const isHost = currentPlayer.isHost;
+  const canStart = playersList.length >= 1; // Allows solo testing or party multiplayer
 
-  const team1Players = connectedPlayers.filter((p) => (p.team || 1) === 1);
-  const team2Players = connectedPlayers.filter((p) => p.team === 2);
-
-  const getShareUrl = () => {
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set('room', room.code);
-      return url.toString();
-    } catch {
-      return `${window.location.origin}/?room=${room.code}`;
-    }
-  };
-
-  const handleCopy = () => {
+  const handleCopyCode = () => {
     navigator.clipboard.writeText(room.code);
     setCopied(true);
-    playClickSound();
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleShare = () => {
-    const shareUrl = getShareUrl();
-    if (navigator.share) {
-      navigator.share({
-        title: 'العب لودكس معي!',
-        text: `تعال العب معنا في لودكس! رمز الغرفة: ${room.code}`,
-        url: shareUrl,
-      }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      playClickSound();
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const canStart = connectedPlayers.length >= 1; // Allows 1+ for testing or full group
-  const isStandardFull = connectedPlayers.length >= 3;
-
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-4 flex flex-col items-center justify-between min-h-[calc(100vh-70px)]">
-      {/* Top Room Code Banner */}
-      <div className="w-full glass-panel rounded-3xl p-4 sm:p-5 border border-slate-800 flex flex-col items-center text-center relative overflow-hidden shadow-xl mb-3">
-        <div className="text-xs font-extrabold text-amber-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-          <Sparkles size={14} />
-          <span>رمز الغرفة الخاص بك</span>
-        </div>
-
-        {/* Big Code */}
-        <div className="flex items-center justify-center gap-3 my-1">
-          <span className="font-mono text-4xl sm:text-5xl font-black text-white tracking-widest drop-shadow-md">
+    <div className="max-w-2xl mx-auto px-4 py-6">
+      {/* Room Code Card */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 rounded-3xl p-5 mb-6 text-center">
+        <p className="text-xs text-amber-400 font-bold mb-1">رمز الغرفة للمشاركة مع الأصدقاء</p>
+        <div className="flex items-center justify-center gap-3">
+          <span className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-amber-300">
             {room.code}
           </span>
+          <button
+            onClick={handleCopyCode}
+            className="p-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition cursor-pointer"
+            title="نسخ الرمز"
+          >
+            {copied ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
+          </button>
         </div>
-
-        <p className="text-slate-400 text-xs font-semibold mb-2">
-          شارك هذا الرمز مع أصدقائك لينضموا للغرفة
+        <p className="text-[11px] text-slate-400 mt-2">
+          شارك هذا الرمز مع أصدقائك لينضموا إليك من هواتفهم مباشرة!
         </p>
-
-        {/* Copy / Share Buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-slate-200 active:scale-95 transition-all shadow-sm"
-          >
-            {copied ? (
-              <>
-                <Check size={15} className="text-emerald-400" />
-                <span className="text-emerald-400">تم النسخ!</span>
-              </>
-            ) : (
-              <>
-                <Copy size={15} />
-                <span>نسخ الرمز</span>
-              </>
-            )}
-          </button>
-
-          <button
-            onClick={handleShare}
-            className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-amber-400 active:scale-95 transition-all shadow-sm"
-          >
-            <Share2 size={15} />
-            <span>مشاركة الرابط</span>
-          </button>
-        </div>
       </div>
 
-      {/* Two Teams Overview */}
-      <div className="w-full grid grid-cols-2 gap-2 mb-3">
-        {/* Team 1 Box */}
-        <div className="rounded-2xl p-2.5 bg-rose-950/30 border border-rose-800/40 flex flex-col">
-          <div className="flex items-center justify-between mb-1 text-xs font-black text-rose-400">
-            <span>🔴 الفريق الأول</span>
-            <span className="text-[10px] bg-rose-900/60 px-1.5 py-0.5 rounded">{team1Players.length}</span>
+      {/* Teams Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        {/* Team 1 */}
+        <div className="bg-slate-900/90 border-2 border-blue-500/40 rounded-3xl p-4 shadow-lg">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
+              <h3 className="font-black text-blue-400 text-sm">الفريق الأزرق (1)</h3>
+            </div>
+            <span className="text-xs text-slate-400 font-mono font-bold">
+              {team1Players.length} لاعبين
+            </span>
           </div>
-          <div className="flex -space-x-1 overflow-hidden py-1">
+
+          <div className="space-y-2 min-h-[120px]">
             {team1Players.map((p) => (
-              <span key={p.id} title={p.nickname} className="w-6 h-6 rounded-full bg-slate-800 border border-rose-500 flex items-center justify-center text-xs">
-                {p.avatar}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Team 2 Box */}
-        <div className="rounded-2xl p-2.5 bg-cyan-950/30 border border-cyan-800/40 flex flex-col">
-          <div className="flex items-center justify-between mb-1 text-xs font-black text-cyan-400">
-            <span>🔵 الفريق الثاني</span>
-            <span className="text-[10px] bg-cyan-900/60 px-1.5 py-0.5 rounded">{team2Players.length}</span>
-          </div>
-          <div className="flex -space-x-1 overflow-hidden py-1">
-            {team2Players.map((p) => (
-              <span key={p.id} title={p.nickname} className="w-6 h-6 rounded-full bg-slate-800 border border-cyan-500 flex items-center justify-center text-xs">
-                {p.avatar}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Players List Card */}
-      <div className="w-full glass-panel rounded-3xl p-4 border border-slate-800 flex-1 flex flex-col mb-3">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
-          <div className="flex items-center gap-2">
-            <Users size={18} className="text-amber-400" />
-            <span className="font-black text-sm text-white">اللاعبون في الغرفة</span>
-          </div>
-          <button
-            onClick={() => {
-              playClickSound();
-              onSwitchTeam();
-            }}
-            className="text-xs font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1 rounded-lg transition-all"
-          >
-            تبديل الفريق 🔄
-          </button>
-        </div>
-
-        {/* Player items grid */}
-        <div className="space-y-2 flex-1 overflow-y-auto max-h-52 pr-1">
-          {connectedPlayers.map((player) => {
-            const isMe = player.id === currentPlayer.id;
-            const isTeam1 = (player.team || 1) === 1;
-
-            return (
               <div
-                key={player.id}
-                className={`flex items-center justify-between p-2.5 rounded-2xl border transition-all ${
-                  isMe
-                    ? 'bg-amber-500/10 border-amber-500/40 shadow-sm'
-                    : 'bg-slate-900/60 border-slate-800'
+                key={p.id}
+                className={`flex items-center justify-between p-2.5 rounded-xl border ${
+                  p.id === currentPlayer.id
+                    ? 'bg-blue-950/60 border-blue-500/60 text-white'
+                    : 'bg-slate-950/60 border-slate-800/80 text-slate-300'
                 }`}
               >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-lg shadow-inner">
-                    {player.avatar}
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-extrabold text-sm text-white">
-                        {player.nickname}
-                      </span>
-                      {isMe && (
-                        <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">
-                          (أنت)
-                        </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{p.avatar}</span>
+                  <div>
+                    <p className="text-xs font-bold flex items-center gap-1">
+                      {p.nickname}
+                      {p.isHost && <Shield className="w-3 h-3 text-amber-400 fill-amber-400" />}
+                      {p.id === currentPlayer.id && (
+                        <span className="text-[10px] text-blue-400">(أنت)</span>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px] font-bold">
-                      <span className={isTeam1 ? 'text-rose-400' : 'text-cyan-400'}>
-                        {isTeam1 ? 'الفريق الأول 🔴' : 'الفريق الثاني 🔵'}
-                      </span>
-                      {player.isHost && (
-                        <span className="flex items-center gap-0.5 text-amber-400">
-                          <Crown size={11} fill="currentColor" />
-                          <span>مضيف</span>
-                        </span>
-                      )}
-                    </div>
+                    </p>
                   </div>
                 </div>
-
-                {/* Ready Badge */}
-                <div className="flex items-center gap-1.5">
-                  {player.isReady ? (
-                    <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-lg">
-                      <CheckCircle2 size={12} />
-                      <span>جاهز</span>
+                <div>
+                  {p.isReady ? (
+                    <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> جاهز
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 text-xs font-bold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg">
-                      <Circle size={12} />
-                      <span>ينتظر</span>
+                    <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <Circle className="w-3.5 h-3.5" /> يستعد
                     </span>
                   )}
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          {currentPlayer.team !== 1 && (
+            <button
+              onClick={() => onChangeTeam(1)}
+              className="w-full mt-3 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              الانتقال للفريق الأزرق
+            </button>
+          )}
         </div>
 
-        {/* Players notice */}
-        <div className="mt-2 pt-2 border-t border-slate-800/80">
-          {!isStandardFull ? (
-            <div className="flex items-center gap-2 text-xs font-bold text-amber-400/90 bg-amber-950/30 p-2 rounded-xl border border-amber-800/30">
-              <AlertCircle size={14} className="shrink-0" />
-              <span>المباراة تكون أكثر متعة عند وجود 3 لاعبين أو أكثر!</span>
+        {/* Team 2 */}
+        <div className="bg-slate-900/90 border-2 border-rose-500/40 rounded-3xl p-4 shadow-lg">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></span>
+              <h3 className="font-black text-rose-400 text-sm">الفريق الأحمر (2)</h3>
             </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-950/30 p-2 rounded-xl border border-emerald-800/30">
-              <CheckCircle2 size={14} className="shrink-0" />
-              <span>العدد ممتاز! يمكن للمضيف بدء اللعبة الآن.</span>
-            </div>
+            <span className="text-xs text-slate-400 font-mono font-bold">
+              {team2Players.length} لاعبين
+            </span>
+          </div>
+
+          <div className="space-y-2 min-h-[120px]">
+            {team2Players.map((p) => (
+              <div
+                key={p.id}
+                className={`flex items-center justify-between p-2.5 rounded-xl border ${
+                  p.id === currentPlayer.id
+                    ? 'bg-rose-950/60 border-rose-500/60 text-white'
+                    : 'bg-slate-950/60 border-slate-800/80 text-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{p.avatar}</span>
+                  <div>
+                    <p className="text-xs font-bold flex items-center gap-1">
+                      {p.nickname}
+                      {p.isHost && <Shield className="w-3 h-3 text-amber-400 fill-amber-400" />}
+                      {p.id === currentPlayer.id && (
+                        <span className="text-[10px] text-rose-400">(أنت)</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  {p.isReady ? (
+                    <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> جاهز
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <Circle className="w-3.5 h-3.5" /> يستعد
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {currentPlayer.team !== 2 && (
+            <button
+              onClick={() => onChangeTeam(2)}
+              className="w-full mt-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              الانتقال للفريق الأحمر
+            </button>
           )}
         </div>
       </div>
 
-      {/* Action Footer Controls */}
-      <div className="w-full space-y-2">
-        {/* Toggle Ready for non-hosts */}
-        {!isHost && (
-          <button
-            onClick={() => {
-              playClickSound();
-              onToggleReady();
-            }}
-            className={`w-full py-3 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all active:scale-98 shadow-lg ${
-              currentPlayer.isReady
-                ? 'bg-slate-900 border border-slate-700 text-slate-300'
-                : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-emerald-500/20'
-            }`}
-          >
-            {currentPlayer.isReady ? (
-              <>
-                <CheckCircle2 size={18} />
-                <span>إلغاء الجاهزية</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 size={18} />
-                <span>أنا جاهز للعب!</span>
-              </>
-            )}
-          </button>
-        )}
+      {/* Lobby Controls */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <button
+          onClick={onToggleReady}
+          className={`w-full sm:w-auto px-6 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer ${
+            currentPlayer.isReady
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+              : 'bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700'
+          }`}
+        >
+          {currentPlayer.isReady ? (
+            <>
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              أنت جاهز الآن
+            </>
+          ) : (
+            <>
+              <Circle className="w-4 h-4" />
+              اضغط لتأكيد الجاهزية
+            </>
+          )}
+        </button>
 
-        {/* Start Game button for Host */}
-        {isHost && (
+        {isHost ? (
           <button
-            onClick={() => {
-              playClickSound();
-              onStartGame();
-            }}
+            onClick={onStartGame}
             disabled={!canStart}
-            className="w-full py-3.5 rounded-2xl font-black text-base flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 shadow-xl shadow-amber-500/25 hover:brightness-105 active:scale-98 disabled:opacity-50 transition-all"
+            className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl font-black text-slate-950 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 shadow-lg shadow-amber-500/20 text-sm flex items-center justify-center gap-2 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            <Play size={20} fill="currentColor" />
-            <span>ابدأ المباراة الآن (10 جولات)</span>
+            <Play className="w-4 h-4 fill-current" />
+            بدء التحدي والجولات
           </button>
-        )}
-
-        {!isHost && (
-          <p className="text-center text-xs text-slate-400 font-semibold">
+        ) : (
+          <div className="text-xs text-slate-400 text-center sm:text-right py-2">
             بانتظار مضيف الغرفة لبدء المباراة...
-          </p>
+          </div>
         )}
       </div>
     </div>
